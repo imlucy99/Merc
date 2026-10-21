@@ -1,18 +1,18 @@
 :root {
-    --logo-size: 150px;
-    --logo-filter: invert(1) contrast(1.6);   /* logo hitam -> putih. Kalau logo sudah putih/berwarna & transparan: ganti jadi none */         /* ukuran logo intro */
-    --speed-size: 64px;         /* ukuran angka speed */
+    --logo-size: 110px;                       /* ukuran logo intro */
+    --logo-filter: invert(1) contrast(1.6);   /* logo hitam -> putih. Kalau logo sudah putih/berwarna & transparan: ganti jadi none */
+    --speed-size: 56px;         /* ukuran angka speed */
     --offset-bottom: 24px;      /* jarak HUD dari bawah layar (naikkan = HUD makin ke atas) */
     --offset-x: 0px;            /* geser HUD horizontal (+ = ke kanan, - = ke kiri) */
     --scale: 0.7;               /* ubah untuk memperbesar / memperkecil HUD */
     --red: #ff2a2f;
     --green: #22d65a;
-    --blue: #2f8bff;
+    --blue: #4db3ff;
     --yellow: #ffc21a;
     --text: #f2f3f5;
     --muted: #8a8f99;
     --off: rgba(255, 255, 255, 0.13);
-    --line: rgba(255, 255, 255, 0.12);
+    --line: rgba(255, 255, 255, 0.14);
     --digital: 'Orbitron', 'Bahnschrift', 'Eurostile', 'Arial Narrow', sans-serif;
     --ui: 'Rajdhani', 'Bahnschrift', 'Segoe UI', sans-serif;
 }
@@ -36,64 +36,64 @@ html, body {
     margin-left: var(--offset-x);
     bottom: var(--offset-bottom);
     width: 1200px;
-    height: 250px;
+    height: 210px;
     transform: translateX(-50%) scale(var(--scale));
     transform-origin: bottom center;
 }
 
 /* Mode preview di browser (demo) */
-body.preview {
-    background:
-        radial-gradient(ellipse at 50% 120%, #2a2f38 0%, transparent 60%),
-        linear-gradient(180deg, #4b5563 0%, #1f242c 55%, #0d0f13 100%);
-}
+body.preview { background: radial-gradient(ellipse at 50% 120%, #1a1d24 0%, #000 70%); }
 body.preview .hud-wrap {
-    left: 50%;
-    margin-left: 0;
     bottom: 50%;
+    margin-left: 0;
     transform: translate(-50%, 50%) scale(var(--scale));
     transform-origin: center;
 }
 
 /* ===================== CLUSTER ===================== */
-.cluster { position: relative; width: 1200px; height: 250px; }
+.cluster { position: relative; width: 1200px; height: 210px; }
 .dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 
-/* ----- teks di dalam SVG ----- */
-.dial .lbl { font-family: var(--ui); font-weight: 700; font-size: 14px; letter-spacing: 2px; fill: var(--muted); }
-.dial .lbl.sm { font-size: 12px; letter-spacing: 1px; }
-.dial .val { font-family: var(--digital); font-weight: 800; font-size: 15px; fill: #fff; }
-.dial .rpm-txt { font-family: var(--ui); font-weight: 700; font-size: 17px; letter-spacing: 1px; fill: #f2f3f5; }
-.dial .num, .dial .onum, .dial .fnum, .dial .enum {
-    font-family: var(--ui); font-weight: 700; font-size: 14px; fill: #b9bdc5;
-}
-.dial .num.on { fill: #ffffff; }
-.dial .num.rl, .dial .onum.rl, .dial .fnum.rl, .dial .enum.rl { fill: var(--red); }
+/* ----- teks & garis di dalam SVG ----- */
+.dial .n { font-family: var(--ui); font-weight: 700; font-style: italic; font-size: 17px; fill: #e8ebf2; }
+.dial .n.sm { font-size: 13px; }
+.dial .n.rl { fill: #ff6a6e; }
+.dial .lbl { font-family: var(--ui); font-weight: 700; font-size: 15px; fill: #f2f3f5; letter-spacing: 1px; }
+.dial .lbl.sm { font-size: 10px; fill: var(--muted); font-weight: 600; }
+.dial .val { font-family: var(--digital); font-weight: 600; font-size: 11px; fill: #cfd6e4; }
 .dial .ico { color: #dfe1e6; }
 
-/* ----- tick skala (RPM, OIL, FUEL, ENGINE) ----- */
-.dial .rt, .dial .ot, .dial .ft, .dial .et { stroke: rgba(255, 255, 255, 0.24); }
-.dial .rt.on, .dial .ot.on, .dial .ft.on, .dial .et.on { stroke: #ffffff; }
-.dial .rt.rl, .dial .ot.rl, .dial .ft.rl, .dial .et.rl { stroke: rgba(255, 42, 47, 0.5); }
-.dial .rt.rl.on, .dial .ot.rl.on, .dial .ft.rl.on, .dial .et.rl.on { stroke: var(--red); }
+.dial .tk { stroke: rgba(255, 255, 255, 0.85); }
+.dial .tk.fb { stroke: var(--blue); }
+.dial .tk.rl { stroke: var(--red); }
 
-.cluster.redline .dial .rt.rl.on { animation: blink 0.16s steps(2) infinite; }
+.dial .track { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 3; }
+.dial .prog { fill: none; stroke: url(#arcg); stroke-width: 3; filter: drop-shadow(0 0 4px rgba(77, 179, 255, 0.85)); }
+.dial .prog.hid { display: none; }
+
+.dial .nd { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
+.dial .ndl { filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.7)); }
+.dial .pivot { fill: #20242c; stroke: #fff; stroke-width: 1.5; }
+
+.dial .seg { fill: rgba(255, 255, 255, 0.13); }
+.dial .seg.on { fill: #cfe4ff; }
+
+/* ----- peringatan ----- */
+.cluster.redline #rpm-arc { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(255, 42, 47, 0.9)); }
+.cluster.redline .dial .tk.rl { animation: blink 0.16s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }
-
-/* ----- peringatan ENGINE (tick) ----- */
-.cluster.eng-warn .dial .et.on, .cluster.eng-warn .dial .et.rl.on { stroke: var(--yellow); }
-.cluster.eng-crit .dial .et.on, .cluster.eng-crit .dial .et.rl.on { stroke: var(--red); animation: slowblink 0.9s steps(2) infinite; }
 @keyframes slowblink { 50% { opacity: 0.35; } }
 
-/* ----- nilai teks & warna peringatan ----- */
-.cluster.fuel-low #fuel-val { fill: var(--red); }
-.cluster.oil-low #oil-val { fill: var(--yellow); }
-.cluster.eng-warn #eng-val { fill: var(--yellow); }
-.cluster.eng-crit #eng-val { fill: var(--red); }
+.cluster.fuel-low #fuel-needle .nd { stroke: var(--red); }
 .cluster.fuel-low #fuel-ico { color: var(--red); }
 .cluster.oil-low #oil-ico { color: var(--yellow); }
-.cluster.eng-warn #eng-ico { color: var(--yellow); }
+.cluster.oil-low .dial .og.on { fill: var(--yellow); }
+.cluster.oil-low #oil-val { fill: var(--yellow); }
+.cluster.eng-warn .dial .eg.on { fill: var(--yellow); }
+.cluster.eng-warn #eng-ico, .cluster.eng-warn #eng-val { color: var(--yellow); fill: var(--yellow); }
+.cluster.eng-crit .dial .eg.on { fill: var(--red); animation: slowblink 0.9s steps(2) infinite; }
 .cluster.eng-crit #eng-ico { color: var(--red); animation: slowblink 0.9s steps(2) infinite; }
+.cluster.eng-crit #eng-val { fill: var(--red); }
 
 /* ===================== IKON INDIKATOR ===================== */
 .icon-item {
@@ -103,10 +103,9 @@ body.preview .hud-wrap {
     transition: color 0.15s ease, filter 0.15s ease;
 }
 .icon-item svg { width: 100%; height: 100%; display: block; }
-
-.icon-item.active    { color: var(--green);  filter: drop-shadow(0 0 5px rgba(34, 214, 90, 0.6)); }
-.icon-item.high-beam { color: var(--blue);   filter: drop-shadow(0 0 6px rgba(47, 139, 255, 0.75)); }
-.icon-item.warn      { color: var(--red);    filter: drop-shadow(0 0 5px rgba(255, 42, 47, 0.6)); }
+.icon-item.active    { color: var(--green); filter: drop-shadow(0 0 5px rgba(34, 214, 90, 0.6)); }
+.icon-item.high-beam { color: var(--blue);  filter: drop-shadow(0 0 6px rgba(77, 179, 255, 0.8)); }
+.icon-item.warn      { color: var(--red);   filter: drop-shadow(0 0 5px rgba(255, 42, 47, 0.6)); }
 
 #headlight .beam-high { display: none; }
 #headlight.high-beam .beam-high { display: inline; }
@@ -115,13 +114,13 @@ body.preview .hud-wrap {
 /* Boot: semua ikon menyala sebentar seperti mobil asli saat kunci kontak ON */
 .cluster.booting .icon-item { color: rgba(255, 255, 255, 0.55); }
 
-/* ===================== PANEL TENGAH ===================== */
+/* ===================== PANEL TENGAH (angka speed) ===================== */
 .center {
     position: absolute;
-    left: 490px;
-    top: 26px;
-    width: 220px;
-    height: 182px;
+    left: 500px;
+    top: 66px;
+    width: 200px;
+    height: 90px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -130,27 +129,18 @@ body.preview .hud-wrap {
 .speed {
     font-family: var(--digital);
     font-weight: 900;
-    font-style: italic;
     font-size: var(--speed-size);
     line-height: 1;
     white-space: nowrap;
-    margin-bottom: 10px;
-    transform: skewX(-6deg);
+    margin-bottom: 8px;
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 22px rgba(255, 255, 255, 0.18);
+    text-shadow: 0 0 22px rgba(255, 255, 255, 0.25);
 }
 .speed .bright { color: #fff; }
 .dim { color: rgba(255, 255, 255, 0.1); }
 
 .unit-wrap { position: relative; display: flex; justify-content: center; align-items: center; }
-.unit {
-    font-family: var(--ui);
-    font-weight: 700;
-    font-size: 20px;
-    letter-spacing: 4px;
-    color: #cfd2d8;
-    line-height: 1;
-}
+.unit { font-family: var(--ui); font-weight: 600; font-size: 17px; letter-spacing: 3px; color: #9aa1ad; line-height: 1; }
 .shift {
     position: absolute;
     inset: 0;
@@ -158,7 +148,7 @@ body.preview .hud-wrap {
     align-items: center;
     justify-content: center;
     font-family: var(--digital);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 800;
     letter-spacing: 4px;
     color: var(--red);
@@ -170,49 +160,31 @@ body.preview .hud-wrap {
 /* ===================== BARIS BAWAH ===================== */
 .bottom {
     position: absolute;
-    top: 187px;
-    height: 40px;
+    top: 166px;
+    height: 30px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
 }
-.bottom.left  { left: 292px; }
-.bottom.right { left: 762px; }
-.vdiv { display: block; width: 1px; height: 24px; background: var(--line); }
+.bottom.left  { left: 124px; }
+.bottom.right { left: 806px; }
+.vdiv { display: block; width: 1px; height: 22px; background: var(--line); }
 
-.gear-val {
-    min-width: 24px;
-    text-align: center;
-    font-family: var(--digital);
-    font-weight: 900;
-    font-style: italic;
-    font-size: 22px;
-    line-height: 26px;
-    color: #fff;
-    transform: skewX(-6deg);
-}
-.odo { display: flex; flex-direction: column; gap: 3px; }
-.c-lbl { font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--muted); line-height: 1; }
-.odo-line {
-    display: flex;
-    align-items: baseline;
-    gap: 5px;
-    font-family: var(--digital);
-    font-weight: 600;
-    font-size: 15px;
-    line-height: 1;
-    color: #e9eaee;
-    font-variant-numeric: tabular-nums;
-}
-.odo-line small { font-family: var(--ui); font-size: 11px; color: var(--muted); }
+.clock { font-family: var(--ui); font-weight: 600; font-style: italic; font-size: 22px; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+.gear { display: flex; align-items: baseline; gap: 8px; }
+.gear-val { min-width: 20px; font-family: var(--digital); font-weight: 800; font-style: italic; font-size: 19px; line-height: 1; color: var(--blue); text-shadow: 0 0 10px rgba(77, 179, 255, 0.5); }
+.c-lbl { font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted); line-height: 1; }
+.odo { display: flex; align-items: baseline; gap: 7px; }
+.odo-val { font-family: var(--ui); font-weight: 600; font-style: italic; font-size: 22px; line-height: 1; color: var(--blue); font-variant-numeric: tabular-nums; }
+.odo-unit { font-family: var(--ui); font-size: 13px; font-weight: 600; color: var(--muted); }
 
 /* ===================== INTRO (slam) ===================== */
 .intro {
     position: absolute;
-    left: 490px;
-    top: 26px;
-    width: 220px;
-    height: 182px;
+    left: 500px;
+    top: 66px;
+    width: 200px;
+    height: 90px;
     display: flex;
     flex-direction: column;
     align-items: center;

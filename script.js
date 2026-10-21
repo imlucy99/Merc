@@ -1,236 +1,152 @@
 /* =========================================================
-   JGVRP Speedometer HUD (layout horizontal)
+   JGVRP Speedometer HUD v2 (speedometer analog, satuan MPH)
    API (dipanggil dari game / CEF):
-     setSpeed(m/s)            setRPM(0.0 - 1.0)
+     setSpeed(m/s -> MPH)     setRPM(0.0 - 1.0)
      setFuel(0-1 | 0-100)     setHealth(0-1 | 0-1000)   -> ENGINE HEALTH
      setGear(n)               setHeadlights(0 off | 1 low | 2 high)
      setSeatbelts(bool)       setEngine(bool)
-     setOdometer(miles)
-     setOil(psi 0-100 | null) -> opsional, kalau tidak dipanggil oil dihitung otomatis
+     setOdometer(miles)       setOil(psi 0-100 | null)
    ========================================================= */
 
 const MPS_TO_MPH = 2.236936;
-const MAX_RPM = 8;          // skala tachometer (x1000)
-const REDLINE = 7;          // mulai zona merah (x1000)
+const MAX_MPH = 160;        // skala speedometer
+const MAX_RPM = 7;          // skala tachometer (x1000)
+const REDLINE = 6;          // mulai zona merah (x1000)
 const OIL_MAX = 100;        // skala oil pressure (psi)
-const FUEL_N = 20;          // jumlah interval tick skala FUEL
-const ENG_N = 20;           // jumlah interval tick skala ENGINE
+const SEGS = 10;            // jumlah blok bar ENGINE / OIL
 
 const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
 const elHud = $('hud');
 const svg = $('dial');
 
-// ---------- Helper Parser (JGRP) ----------
-function isTrueValue(val) {
-    return val === true || val === 1 || val === "1" || val === "true";
-}
+function isTrueValue(val) { return val === true || val === 1 || val === "1" || val === "true"; }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// ---------- Geometri ----------
-const RX = 376, RY = 132;                 // pusat arc RPM
-const RPM_START = 160, RPM_SWEEP = 220;   // derajat (0 = kanan, searah jarum jam)
-const rpmAngle = (ratio) => RPM_START + clamp01(ratio) * RPM_SWEEP;
-
-const OIL_X0 = 772, OIL_X1 = 916, OIL_Y = 118, OIL_N = 50;   // skala oil (garis tick horizontal)
-
-const pol = (r, a) => {
-    const t = (a * Math.PI) / 180;
-    return [(RX + r * Math.cos(t)).toFixed(2), (RY + r * Math.sin(t)).toFixed(2)];
+// ---------- Geometri gauge (derajat: 0 = kanan, searah jarum jam) ----------
+const G = {
+    spd:  { cx: 600, cy: 146, r: 118, start: 165, sweep: 210 },
+    rpm:  { cx: 330, cy: 126, r: 66,  start: 150, sweep: 215 },
+    fuel: { cx: 870, cy: 126, r: 66,  start: 205, sweep: 130 },
 };
-function arcPath(r, a1, a2) {
-    const [x1, y1] = pol(r, a1), [x2, y2] = pol(r, a2);
-    return `M${x1} ${y1}A${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2} ${y2}`;
-}
-function segs(cls, x0, y, n, w, gap, h) {
-    let s = '';
-    for (let i = 0; i < n; i++) {
-        s += `<rect class="seg ${cls}" x="${(x0 + i * (w + gap)).toFixed(1)}" y="${y}" width="${w}" height="${h}" rx="1.5"/>`;
-    }
-    return s;
+const pt = (g, r, a) => {
+    const t = (a * Math.PI) / 180;
+    return [g.cx + r * Math.cos(t), g.cy + r * Math.sin(t)];
+};
+const f1 = (n) => n.toFixed(1);
+function arcPath(g, r) {
+    const [x1, y1] = pt(g, r, g.start), [x2, y2] = pt(g, r, g.start + g.sweep);
+    return `M${f1(x1)} ${f1(y1)}A${r} ${r} 0 ${g.sweep > 180 ? 1 : 0} 1 ${f1(x2)} ${f1(y2)}`;
 }
 
-// Skala tick bergaya OIL: angka di atas, garis tick di tengah (dipakai RPM, FUEL, OIL, ENGINE)
-//   o = { cls, ncls, x0, x1, n, major, labels[], red(i), redNum(labelIdx) }
-function scale(o) {
-    const y = OIL_Y;
-    let s = `<line x1="${o.x0}" y1="${y + 3}" x2="${o.x1}" y2="${y + 3}" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>`;
+// Tick + angka melingkar. o = { cls, ncls, n, major, labels[], lr, red(i), redNum(k) }
+function ticks(g, o) {
+    let s = '';
     for (let i = 0; i <= o.n; i++) {
-        const x = (o.x0 + ((o.x1 - o.x0) * i) / o.n).toFixed(2);
+        const a = g.start + (g.sweep * i) / o.n;
         const maj = i % o.major === 0;
-        const mid = o.major % 2 === 0 && i % (o.major / 2) === 0;
-        const h = maj ? 14 : mid ? 10 : 7;
-        s += `<line class="${o.cls}${o.red(i) ? ' rl' : ''}" x1="${x}" y1="${y - h}" x2="${x}" y2="${y}" stroke-width="${maj ? 2.2 : 1.3}"/>`;
+        const len = maj ? 13 : 7;
+        const [x1, y1] = pt(g, g.r - len, a), [x2, y2] = pt(g, g.r, a);
+        s += `<line class="${o.cls}${o.red(i) ? ' rl' : ''}" x1="${f1(x1)}" y1="${f1(y1)}" x2="${f1(x2)}" y2="${f1(y2)}" stroke-width="${maj ? 2.4 : 1.3}"/>`;
         if (maj) {
-            const li = i / o.major;
-            s += `<text class="${o.ncls}${o.redNum(li) ? ' rl' : ''}" x="${x}" y="${y - 22}" text-anchor="middle">${o.labels[li]}</text>`;
+            const k = i / o.major;
+            const [tx, ty] = pt(g, g.r - len - o.lr, a);
+            s += `<text class="${o.ncls}${o.redNum(k) ? ' rl' : ''}" x="${f1(tx)}" y="${f1(ty)}" text-anchor="middle" dominant-baseline="central">${o.labels[k]}</text>`;
         }
     }
     return s;
 }
+const arcs = (g, id) =>
+    `<path class="track" d="${arcPath(g, g.r + 6)}"/>` +
+    `<path id="${id}" class="prog" d="${arcPath(g, g.r + 6)}" pathLength="100" stroke-dasharray="0 100"/>`;
+const needle = (id, g, r0, r1) =>
+    `<g id="${id}" class="ndl"><line class="nd" x1="${g.cx + r0}" y1="${g.cy}" x2="${g.cx + r1}" y2="${g.cy}"/></g>`;
+const segs = (cls, x0, y) =>
+    Array.from({ length: SEGS }, (_, i) => `<rect class="seg ${cls}" x="${x0 + i * 12}" y="${y}" width="10" height="7" rx="1.5"/>`).join('');
 
 function buildDial() {
+    const shell = 'M6 112C6 98 20 86 40 80L250 58C340 51 430 47 490 43L532 28C556 15 578 9 600 9C622 9 644 15 668 28L710 43C770 47 860 51 950 58L1160 80C1180 86 1194 98 1194 112C1190 142 1172 168 1148 182C1122 196 1088 201 1048 201L690 201C650 208 550 208 510 201L152 201C112 201 78 196 52 182C28 168 10 142 6 112Z';
+    const bar = 'M30 150C80 164 120 166 200 166L470 166C505 166 525 178 548 186';
     let s = `
     <defs>
-      <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#1a1c21"/><stop offset="0.1" stop-color="#0e0f12"/><stop offset="1" stop-color="#050506"/>
-      </linearGradient>
-      <linearGradient id="centerg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#0d0e11"/><stop offset="1" stop-color="#020203"/>
-      </linearGradient>
-      <linearGradient id="glowbar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
-      </linearGradient>
+      <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1e25"/><stop offset=".35" stop-color="#0b0c10"/><stop offset="1" stop-color="#040406"/></linearGradient>
+      <linearGradient id="rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
+      <linearGradient id="rim2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".55" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>
+      <linearGradient id="arcg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2f7dff"/><stop offset="1" stop-color="#bfe3ff"/></linearGradient>
+      <radialGradient id="dialg" cx=".5" cy=".45" r=".65"><stop offset="0" stop-color="#10131a"/><stop offset="1" stop-color="#030304"/></radialGradient>
+      <clipPath id="clip"><path d="${shell}"/></clipPath>
     </defs>
+    <path d="${shell}" fill="url(#shell)" stroke="url(#rim)" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="${bar}" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1.2"/>
+    <g transform="translate(1200 0) scale(-1 1)"><path d="${bar}" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1.2"/></g>
+    <path d="M218 168V196M972 168V196" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
+    <g clip-path="url(#clip)">
+      <circle cx="600" cy="146" r="134" fill="url(#dialg)" stroke="url(#rim2)" stroke-width="2.4"/>
+      <circle cx="330" cy="126" r="74" fill="url(#dialg)" stroke="url(#rim2)" stroke-width="1.8"/>
+      <circle cx="870" cy="126" r="74" fill="url(#dialg)" stroke="url(#rim2)" stroke-width="1.8"/>
+    </g>`;
 
-    <!-- bar bawah -->
-    <path d="M210 170 L990 170 L952 232 L248 232 Z" fill="url(#panel)" stroke="rgba(255,255,255,0.1)" stroke-width="1.2" stroke-linejoin="round"/>
-    <!-- rim atas -->
-    <path d="M100 14 L1100 14 L1124 26 L76 26 Z" fill="#0b0c0e" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-    <!-- body utama (ujung lancip kiri & kanan) -->
-    <path d="M70 26 L1130 26 L1186 104 L1130 182 L70 182 L14 104 Z" fill="url(#panel)" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" stroke-linejoin="round"/>
-    <!-- panel tengah (speed) -->
-    <path d="M490 26 L710 26 L690 208 L510 208 Z" fill="url(#centerg)" stroke="rgba(255,255,255,0.12)" stroke-width="1.2" stroke-linejoin="round"/>
+    // SPEED 0-160 MPH
+    s += arcs(G.spd, 'spd-arc');
+    s += ticks(G.spd, { cls: 'tk', ncls: 'n', n: 40, major: 5, lr: 14, labels: [0, 20, 40, 60, 80, 100, 120, 140, 160], red: () => false, redNum: () => false });
+    s += needle('spd-needle', G.spd, 70, 104);
 
-    <!-- aksen putih -->
-    <rect x="250" y="17" width="190" height="3" fill="url(#glowbar)" opacity="0.9"/>
-    <rect x="760" y="17" width="190" height="3" fill="url(#glowbar)" opacity="0.9"/>
-    <rect x="540" y="219" width="120" height="3" fill="url(#glowbar)" opacity="0.9"/>
+    // RPM x1000
+    s += arcs(G.rpm, 'rpm-arc');
+    s += ticks(G.rpm, { cls: 'tk', ncls: 'n sm', n: MAX_RPM * 2, major: 2, lr: 11, labels: [0, 1, 2, 3, 4, 5, 6, 7], red: (i) => i >= REDLINE * 2, redNum: (k) => k >= REDLINE });
+    s += `<text class="lbl" x="342" y="148">RPM</text><text class="lbl sm" x="342" y="160">x1000</text>`;
+    s += needle('rpm-needle', G.rpm, 10, 54) + `<circle class="pivot" cx="330" cy="126" r="4"/>`;
 
-    <!-- chevron merah kiri & kanan -->
-    <path d="M58 46 L30 104 L58 162" fill="none" stroke="#ff2a2f" stroke-opacity="0.25" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M58 46 L30 104 L58 162" fill="none" stroke="#ff2a2f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M1142 46 L1170 104 L1142 162" fill="none" stroke="#ff2a2f" stroke-opacity="0.25" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M1142 46 L1170 104 L1142 162" fill="none" stroke="#ff2a2f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    // FUEL E - F
+    s += arcs(G.fuel, 'fuel-arc').replace('class="prog"', 'class="prog hid"');
+    s += ticks(G.fuel, { cls: 'tk fb', ncls: 'n sm', n: 20, major: 10, lr: 11, labels: ['E', '&#189;', 'F'], red: (i) => i <= 3, redNum: (k) => k === 0 });
+    s += needle('fuel-needle', G.fuel, 10, 54) + `<circle class="pivot" cx="870" cy="126" r="4"/>`;
+    s += '<svg id="fuel-ico" class="ico" x="858" y="138" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>';
 
-    <!-- garis merah miring di sisi panel speed -->
-    <path d="M476 58 L494 152" fill="none" stroke="#ff2a2f" stroke-opacity="0.3" stroke-width="12" stroke-linecap="round"/>
-    <path d="M476 58 L494 152" fill="none" stroke="#ff2a2f" stroke-width="4" stroke-linecap="round"/>
-    <path d="M724 58 L706 152" fill="none" stroke="#ff2a2f" stroke-opacity="0.3" stroke-width="12" stroke-linecap="round"/>
-    <path d="M724 58 L706 152" fill="none" stroke="#ff2a2f" stroke-width="4" stroke-linecap="round"/>
+    // Sayap kiri: ENGINE health
+    s += '<svg id="eng-ico" class="ico" x="120" y="88" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6M3 12h2.2M5.2 8.5h3.1V6.3h5v2.2h2.1l1.5 2h3.1v6.2h-2.2l-1.4 1.8H8.8l-3.6-3.6z"/></svg>';
+    s += segs('eg', 75, 124) + `<text id="eng-val" class="val" x="134" y="150" text-anchor="middle">100%</text>`;
 
-    <!-- pembatas tipis -->
-    <path d="M262 60 L278 150" stroke="rgba(255,255,255,0.16)" stroke-width="1.2"/>
-    <path d="M938 60 L922 150" stroke="rgba(255,255,255,0.16)" stroke-width="1.2"/>
+    // Sayap kanan: OIL pressure
+    s += '<svg id="oil-ico" class="ico" x="1050" y="88" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 10h4.2l1.3-2h2V6.5H8V5h6v1.5h-2V8h2.5l2 1.8 5-2.8 1 1.2-6.6 7.3H8.4L7 13H2.5zM20.2 14.6c0-.9 1.1-2.3 1.1-2.3s1.1 1.4 1.1 2.3c0 .6-.5 1.1-1.1 1.1s-1.1-.5-1.1-1.1z"/></svg>';
+    s += segs('og', 1006, 124) + `<text id="oil-val" class="val" x="1065" y="150" text-anchor="middle">0 psi</text>`;
 
-    <!-- skala FUEL / RPM / OIL / ENGINE dibangun di bawah -->`;
-
-    const label = (name, valId, valInit, x0, x1, sub) =>
-        `<text class="lbl" x="${x0}" y="142">${name}</text>` +
-        (sub ? `<text class="lbl sm" x="${x1}" y="142" text-anchor="end">${sub}</text>`
-             : `<text id="${valId}" class="val" x="${x1}" y="143" text-anchor="end">${valInit}</text>`);
-
-    // FUEL
-    s += '<svg id="fuel-ico" class="ico" x="52" y="88" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>';
-    s += scale({ cls: 'ft', ncls: 'fnum', x0: 96, x1: 240, n: FUEL_N, major: 10, labels: ['E', '1/2', 'F'],
-                 red: (i) => i < 4, redNum: (k) => k === 0 });
-    s += label('FUEL', 'fuel-val', '0%', 96, 240);
-
-    // RPM (tanpa ikon, dipusatkan di antara pembatas)
-    s += scale({ cls: 'rt', ncls: 'num', x0: 304, x1: 450, n: MAX_RPM * 5, major: 5, labels: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-                 red: (i) => i >= REDLINE * 5, redNum: (k) => k >= REDLINE });
-    s += label('RPM', '', '', 304, 450, 'x1000');
-
-    // OIL
-    s += '<svg id="oil-ico" class="ico" x="728" y="92" width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 10h4.2l1.3-2h2V6.5H8V5h6v1.5h-2V8h2.5l2 1.8 5-2.8 1 1.2-6.6 7.3H8.4L7 13H2.5zM20.2 14.6c0-.9 1.1-2.3 1.1-2.3s1.1 1.4 1.1 2.3c0 .6-.5 1.1-1.1 1.1s-1.1-.5-1.1-1.1z"/></svg>';
-    s += scale({ cls: 'ot', ncls: 'onum', x0: OIL_X0, x1: OIL_X1, n: OIL_N, major: 10, labels: [0, 20, 40, 60, 80, 100],
-                 red: (i) => i >= 40, redNum: (k) => k >= 4 });
-    s += label('OIL', 'oil-val', '0 psi', OIL_X0, OIL_X1);
-
-    // ENGINE
-    s += '<svg id="eng-ico" class="ico" x="946" y="88" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6M3 12h2.2M5.2 8.5h3.1V6.3h5v2.2h2.1l1.5 2h3.1v6.2h-2.2l-1.4 1.8H8.8l-3.6-3.6z"/></svg>';
-    s += scale({ cls: 'et', ncls: 'enum', x0: 988, x1: 1132, n: ENG_N, major: 5, labels: [0, 25, 50, 75, 100],
-                 red: (i) => i < 6, redNum: (k) => k === 0 });
-    s += label('ENGINE', 'eng-val', '100%', 988, 1132);
     svg.innerHTML = s;
 }
 buildDial();
 
-// ---------- Teks intro: ganti di index.html pada data-text="OBEY" ----------
-(function () {
-    const el = $('intro-text');
-    if (el === NOOP_EL) return;
-    const text = (el.dataset.text || el.textContent || 'OBEY').trim().toUpperCase();
-    const chars = Array.from(text);
-    el.textContent = '';
-    chars.forEach((ch, i) => {
-        const span = document.createElement('span');
-        span.textContent = ch === ' ' ? '\u00A0' : ch;
-        span.style.animationDelay = (0.3 + i * 0.09).toFixed(2) + 's';
-        el.appendChild(span);
-    });
-    el.style.fontSize = Math.max(14, Math.min(34, Math.floor(180 / (chars.length * 0.95)))) + 'px';
-})();
-
-const rTicks = svg.querySelectorAll('.rt');
-const rNums = svg.querySelectorAll('.num');
-const oTicks = svg.querySelectorAll('.ot');
-const fTicks = svg.querySelectorAll('.ft');
-const eTicks = svg.querySelectorAll('.et');
+const eSegs = svg.querySelectorAll('.eg');
+const oSegs = svg.querySelectorAll('.og');
+const nSpd = $('spd-needle'), nRpm = $('rpm-needle'), nFuel = $('fuel-needle');
+const aSpd = $('spd-arc'), aRpm = $('rpm-arc');
 
 // ---------- State ----------
 const state = {
-    mph: 0,
-    rpm: 0,          // target 0-1 dari game
-    rpmShown: 0,     // nilai yang di-smooth untuk animasi
-    health: 1,       // engine health 0-1
-    fuel: 0,
-    oilShown: 0,     // psi, di-smooth
+    mph: 0, mps: 0,          // kecepatan (float)
+    rpm: 0, fuel: 0, health: 1,
     oilOverride: null,
-    lastTick: -1,
-    lastOilTick: -1,
-    lastFuelLit: -1,
-    lastEngLit: -1,
-    lastMphShown: -1,
     belted: false,
-    engine: false,   // dari setEngine(); alarm hanya bunyi saat mesin hidup
-    mps: 0,
+    engine: false,           // dari setEngine(); alarm hanya bunyi saat mesin hidup
+    lastMphShown: -1, lastEngLit: -1, lastOilLit: -1,
 };
+const sh = { spd: 0, rpm: 0, fuel: 0, eng: 0, oil: 0 };   // nilai tampil (di-smooth), 0-1
 let bootUntil = performance.now() + 1700;
-
 let lastRedline = null;
-function renderRpm(ratio) {
-    const lit = Math.round(ratio * MAX_RPM * 5);
-    if (lit !== state.lastTick) {
-        state.lastTick = lit;
-        rTicks.forEach((t, i) => t.classList.toggle('on', i <= lit && ratio > 0.003));
-        rNums.forEach((n, v) => n.classList.toggle('on', v * 5 <= lit && ratio > 0.003));
-    }
-    const red = ratio >= REDLINE / MAX_RPM;
-    if (red !== lastRedline) {
-        lastRedline = red;
-        elHud.classList.toggle('redline', red);
-    }
-}
-
-function renderOil(psi) {
-    const lit = Math.round((psi / OIL_MAX) * OIL_N);
-    if (lit !== state.lastOilTick) {
-        state.lastOilTick = lit;
-        oTicks.forEach((t, i) => t.classList.toggle('on', i <= lit && psi > 0.5));
-    }
-    setText($('oil-val'), Math.round(psi) + ' psi');
-}
-
-function renderBars(f, e) {
-    const fl = f > 0.005 ? Math.round(f * FUEL_N) : -1;
-    const el = e > 0.005 ? Math.round(e * ENG_N) : -1;
-    if (fl !== state.lastFuelLit) {
-        state.lastFuelLit = fl;
-        fTicks.forEach((t, i) => t.classList.toggle('on', i <= fl));
-    }
-    if (el !== state.lastEngLit) {
-        state.lastEngLit = el;
-        eTicks.forEach((t, i) => t.classList.toggle('on', i <= el));
-    }
-}
-function refreshBars() {
-    if (performance.now() >= bootUntil) renderBars(state.fuel, state.health);
-}
 
 // Helper: tulis DOM hanya kalau isinya memang berubah
 function setText(el, txt) { txt = String(txt); if (el.textContent !== txt) el.textContent = txt; }
 function setClass(el, cls) { if (el.className !== cls) el.className = cls; }
+const ease = (cur, tar, k) => { const v = cur + (tar - cur) * k; return Math.abs(tar - v) < 0.0005 ? tar : v; };
+
+const rotate = (el, g, ratio) => el.setAttribute('transform', `rotate(${(g.start + clamp01(ratio) * g.sweep).toFixed(2)} ${g.cx} ${g.cy})`);
+const dash = (el, ratio) => el.setAttribute('stroke-dasharray', `${(clamp01(ratio) * 100).toFixed(2)} 100`);
+
+function renderSegs(list, ratio, key) {
+    const lit = ratio > 0.005 ? Math.max(1, Math.round(ratio * SEGS)) : 0;
+    if (lit === state[key]) return;
+    state[key] = lit;
+    list.forEach((s, i) => s.classList.toggle('on', i < lit));
+}
 
 function padDigits(n, len) {
     const s = String(Math.max(0, n)).padStart(len, '0');
@@ -246,10 +162,8 @@ function oilTarget() {
     return Math.min(OIL_MAX, (18 + state.rpm * 52) * (0.45 + 0.55 * state.health));
 }
 
-// ---------- Loop animasi ----------
-// Hemat FPS: loop BERHENTI saat tidak ada yang bergerak, dan dibatasi MAX_FPS.
-const MAX_FPS = 40;
-const FRAME_MS = 1000 / MAX_FPS;
+// ---------- Loop animasi (berhenti saat tidak ada yang bergerak, maks 40 FPS) ----------
+const FRAME_MS = 1000 / 40;
 let lastFrame = 0, rafId = 0;
 function kick() {
     if (rafId) return;
@@ -262,43 +176,53 @@ function frame(now) {
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
 
+    // Saat kontak ON: semua gauge naik lalu turun
     const booting = now < bootUntil;
-    let target = state.rpm;
+    let t = 0;
     if (booting) {
-        // sweep saat kontak ON: semua gauge naik lalu turun
-        const t = 1 - (bootUntil - now) / 1700;
-        target = t < 0.45 ? t / 0.45 : Math.max(0, 1 - (t - 0.55) / 0.45);
-        if (t >= 0.45 && t < 0.55) target = 1;
+        const p = 1 - (bootUntil - now) / 1700;
+        t = p < 0.45 ? p / 0.45 : p < 0.55 ? 1 : Math.max(0, 1 - (p - 0.55) / 0.45);
     } else if (elHud.classList.contains('booting')) {
         elHud.classList.remove('booting');
     }
 
-    const k = booting ? 1 : Math.min(1, dt * 14);
-    state.rpmShown += (target - state.rpmShown) * k;
-    if (Math.abs(target - state.rpmShown) < 0.0005) state.rpmShown = target;
-    renderRpm(state.rpmShown);
+    const k = booting ? 1 : Math.min(1, dt * 12);
+    const tgt = booting
+        ? { spd: t, rpm: t, fuel: t, eng: t, oil: t }
+        : { spd: state.mph / MAX_MPH, rpm: state.rpm, fuel: state.fuel, eng: state.health, oil: oilTarget() / OIL_MAX };
+    let moving = false;
+    for (const key in tgt) {
+        const v = ease(sh[key], clamp01(tgt[key]), key === 'spd' ? Math.min(1, dt * 8) : k);
+        if (v !== clamp01(tgt[key])) moving = true;
+        sh[key] = v;
+    }
 
-    const oilT = booting ? target * OIL_MAX : oilTarget();
-    state.oilShown += (oilT - state.oilShown) * (booting ? 1 : Math.min(1, dt * 6));
-    if (Math.abs(oilT - state.oilShown) < 0.05) state.oilShown = oilT;
-    renderOil(state.oilShown);
-    if (!booting) elHud.classList.toggle('oil-low', state.engine && state.oilShown < 15);
+    rotate(nSpd, G.spd, sh.spd);   dash(aSpd, sh.spd);
+    rotate(nRpm, G.rpm, sh.rpm);   dash(aRpm, sh.rpm);
+    rotate(nFuel, G.fuel, sh.fuel);
+    renderSegs(eSegs, sh.eng, 'lastEngLit');
+    renderSegs(oSegs, sh.oil, 'lastOilLit');
+    setText($('oil-val'), Math.round(sh.oil * OIL_MAX) + ' psi');
 
-    renderBars(booting ? target : state.fuel, booting ? target : state.health);
+    const red = sh.rpm >= REDLINE / MAX_RPM;
+    if (red !== lastRedline) { lastRedline = red; elHud.classList.toggle('redline', red); }
+    if (!booting) elHud.classList.toggle('oil-low', state.engine && sh.oil * OIL_MAX < 15);
 
-    if (booting || state.rpmShown !== target || state.oilShown !== oilT) rafId = requestAnimationFrame(frame);
+    if (booting || moving) rafId = requestAnimationFrame(frame);
 }
 kick();
 
 // ---------- 1. Kecepatan (m/s -> MPH) ----------
 window.setSpeed = function (speed) {
-    const mph = Math.round(Number(speed || 0) * MPS_TO_MPH);
-    state.mph = mph;
-    state.mps = Number(speed || 0);
+    const mps = Number(speed || 0);
+    state.mps = mps;
+    state.mph = mps * MPS_TO_MPH;
+    const mph = Math.round(state.mph);
     if (mph !== state.lastMphShown) {
         state.lastMphShown = mph;
         $('speed-display').innerHTML = padDigits(mph, 3);
     }
+    kick();
 };
 
 // ---------- 2. RPM (0.0 - 1.0) ----------
@@ -314,13 +238,11 @@ window.setFuel = function (fuel) {
     const val = Number(fuel || 0);
     const percent = clamp01(val > 1 ? val / 100 : val);
     state.fuel = percent;
-    setText($('fuel-val'), Math.round(percent * 100) + '%');
     elHud.classList.toggle('fuel-low', percent < 0.20);
-    refreshBars();
+    kick();
 };
 
-// ---------- 4. Engine Health ----------
-// >50% normal (putih) | 30-50% WORN (kuning) | <30% DAMAGED (merah berkedip)
+// ---------- 4. Engine Health: >50% normal | 30-50% kuning | <30% merah berkedip ----------
 window.setHealth = function (health) {
     const val = Number(health || 0);
     const percent = clamp01(val > 1 ? val / 1000 : val);
@@ -328,7 +250,6 @@ window.setHealth = function (health) {
     setText($('eng-val'), Math.round(percent * 100) + '%');
     elHud.classList.toggle('eng-warn', percent <= 0.5 && percent > 0.3);
     elHud.classList.toggle('eng-crit', percent <= 0.3);
-    refreshBars();
     kick();   // oil ikut turun kalau health jelek
 };
 
@@ -348,27 +269,52 @@ window.setGear = function (gear) {
     if ($('gear').style.color !== col) $('gear').style.color = col;
 };
 
-// ---------- 7. Lampu (0 = mati, 1 = low beam, 2 = high beam) ----------
+// ---------- 6. Lampu (0 = mati, 1 = low beam, 2 = high beam) ----------
 window.setHeadlights = function (st) {
     const val = Number(st || 0);
     setClass($('headlight'), val === 2 ? 'icon-item high-beam' : val === 1 ? 'icon-item active' : 'icon-item');
 };
 
-// ---------- 8. Sein (dinonaktifkan) ----------
-window.setLeftIndicator = function () {};
-window.setRightIndicator = function () {};
-
-// ---------- 9. Seatbelt (true = terpasang) ----------
+// ---------- 7. Seatbelt (true = terpasang) ----------
 window.setSeatbelts = function (val) {
     const on = isTrueValue(val);
     state.belted = on;
     setClass($('seatbelts'), on ? 'icon-item active' : 'icon-item warn');
 };
 
-// ---------- 10. Odometer (mil) ----------
+// ---------- 8. Odometer (mil) ----------
 window.setOdometer = function (distance) {
-    setText($('odometer'), Number(distance || 0).toFixed(1));
+    setText($('odometer'), Number(distance || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 };
+
+// ---------- Fitur lama yang dinonaktifkan (sein, lock/unlock) ----------
+window.setLeftIndicator = function () {};
+window.setRightIndicator = function () {};
+window.setLocked = function () {};
+
+// ---------- Jam ----------
+function tickClock() {
+    const d = new Date();
+    setText($('clock'), String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+}
+tickClock();
+setInterval(tickClock, 10000);
+
+// ---------- Teks intro: ganti di index.html pada data-text="OBEY" ----------
+(function () {
+    const el = $('intro-text');
+    if (el === NOOP_EL) return;
+    const text = (el.dataset.text || el.textContent || 'OBEY').trim().toUpperCase();
+    const chars = Array.from(text);
+    el.textContent = '';
+    chars.forEach((ch, i) => {
+        const span = document.createElement('span');
+        span.textContent = ch === ' ' ? '\u00A0' : ch;
+        span.style.animationDelay = (0.3 + i * 0.09).toFixed(2) + 's';
+        el.appendChild(span);
+    });
+    el.style.fontSize = Math.max(14, Math.min(34, Math.floor(180 / (chars.length * 0.95)))) + 'px';
+})();
 
 // ---------- Intro (bisa dipanggil ulang: playIntro()) ----------
 let introTimer;
@@ -464,6 +410,7 @@ setInterval(() => {
 // ---------- Engine (setEngine(true/false)) ----------
 window.setEngine = function (on) {
     state.engine = isTrueValue(on);
+    setClass($('enginelamp'), state.engine ? 'icon-item active' : 'icon-item');
     kick();   // oil pressure naik/turun saat mesin hidup/mati
 };
 window.setSeatbeltSoundEnabled = (on) => window.setHudSound(!!on);

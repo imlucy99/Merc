@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JGVRP Speedometer HUD</title>
-  <meta name="description" content="Custom digital speedometer HUD horizontal untuk JGVRP: fuel, RPM, speed MPH, oil pressure, engine health, dan indikator kendaraan." />
+  <meta name="description" content="Custom digital speedometer HUD untuk JGVRP: speed MPH, RPM, fuel, oil pressure, engine health, dan indikator kendaraan." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -15,10 +15,10 @@
   <div class="hud-wrap">
     <div class="cluster booting" id="hud">
 
-      <!-- Body cluster, FUEL, RPM, OIL, ENGINE digambar oleh script.js -->
-      <svg id="dial" class="dial" viewBox="0 0 1200 250" xmlns="http://www.w3.org/2000/svg"></svg>
+      <!-- Body cluster, gauge SPEED / RPM / FUEL, bar ENGINE & OIL digambar oleh script.js -->
+      <svg id="dial" class="dial" viewBox="0 0 1200 210" xmlns="http://www.w3.org/2000/svg"></svg>
 
-      <!-- ===== PANEL TENGAH: SPEED ===== -->
+      <!-- ===== PANEL TENGAH: angka speed ===== -->
       <div class="center">
         <div id="speed-display" class="speed"><span class="dim">00</span><span class="bright">0</span></div>
         <div class="unit-wrap">
@@ -27,9 +27,23 @@
         </div>
       </div>
 
-      <!-- ===== BARIS BAWAH KIRI: gear, seatbelt ===== -->
+      <!-- ===== BARIS BAWAH KIRI: jam + gear ===== -->
       <div class="bottom left">
-        <div class="gear-val" id="gear" title="Gear">N</div>
+        <div class="clock" id="clock">00:00</div>
+        <i class="vdiv"></i>
+        <div class="gear" title="Gear">
+          <span class="c-lbl">GEAR</span>
+          <span class="gear-val" id="gear">N</span>
+        </div>
+      </div>
+
+      <!-- ===== BARIS BAWAH KANAN: odometer + indikator ===== -->
+      <div class="bottom right">
+        <div class="odo">
+          <span class="c-lbl">ODO</span>
+          <span class="odo-val" id="odometer">0.0</span>
+          <span class="odo-unit">MI</span>
+        </div>
         <i class="vdiv"></i>
 
         <!-- Seatbelt: merah = belum dipasang, hijau = terpasang -->
@@ -40,11 +54,8 @@
             <path d="M9 8.5l7.5 10"/>
           </svg>
         </div>
-      </div>
 
-      <!-- ===== BARIS BAWAH KANAN: lampu + odometer ===== -->
-      <div class="bottom right">
-        <!-- Lampu: mati = redup, low = hijau (garis miring), high = biru (garis lurus) -->
+        <!-- Lampu: mati = redup, low = hijau, high = biru -->
         <div id="headlight" class="icon-item" title="Headlight">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 4h2a8 8 0 0 1 0 16h-2z" fill="currentColor" fill-opacity=".15"/>
@@ -52,17 +63,18 @@
             <g class="beam-high"><path d="M9 6H2M9 10H2M9 14H2M9 18H2"/></g>
           </svg>
         </div>
-        <i class="vdiv"></i>
-        <div class="odo">
-          <span class="c-lbl">ODO</span>
-          <div class="odo-line"><span id="odometer">0.0</span><small>mi</small></div>
+
+        <!-- Mesin: hijau = hidup -->
+        <div id="enginelamp" class="icon-item" title="Engine">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v8"/><path d="M7 6.5a7 7 0 1 0 10 0"/>
+          </svg>
         </div>
       </div>
 
       <!-- ===== INTRO (tampil sekali saat HUD pertama dipakai) ===== -->
       <div class="intro" id="intro">
-        <!-- Logo sendiri: taruh file "logo.png" di folder yang sama. Kalau ada, otomatis dipakai
-             dan tulisan bawaan disembunyikan. -->
+        <!-- Logo sendiri: taruh file "logo.png" di folder yang sama. Kalau ada, otomatis dipakai. -->
         <img class="intro-logo" src="logo.png" alt="" onload="document.getElementById('intro').classList.add('has-logo')" onerror="this.remove()">
         <div class="intro-text" id="intro-text" data-text="OBEY">OBEY</div>
         <i class="intro-line"></i>
