@@ -314,18 +314,17 @@ body[data-theme="amber"] { --face-a: #2b2318; --face-b: #100c06; --ink: #ffe9c4;
 body[data-theme="mono"]  { --face-a: #16261c; --face-b: #08100b; --ink: #dfffe9; --zone: #ff4a17; --needle: #22d65a; --glow: #22d65a; --seg: #8dffb0; --red: #22d65a; --red-rgb: 34, 214, 90; }
 
 .theme-btn {
-    position: fixed; top: 14px; right: 14px; z-index: 10;
-    display: none; align-items: center; gap: 9px;
-    padding: 9px 16px; border-radius: 999px; cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(10, 11, 13, 0.72); color: #fff;
-    font: 700 13px/1 var(--ui); letter-spacing: 2px; text-transform: uppercase;
-    transition: border-color 0.2s, transform 0.1s;
+    position: fixed; top: 8px; right: 8px; z-index: 10;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 9px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(10, 11, 13, 0.55); color: rgba(255, 255, 255, 0.75);
+    font: 700 10px/1 var(--ui); letter-spacing: 1.5px; text-transform: uppercase;
+    opacity: 0.7; transition: opacity 0.2s, border-color 0.2s, transform 0.1s;
 }
-.theme-btn i { width: 12px; height: 12px; border-radius: 50%; background: var(--red); box-shadow: 0 0 9px var(--red); }
-.theme-btn:hover { border-color: var(--red); }
+.theme-btn i { width: 8px; height: 8px; border-radius: 50%; background: var(--needle); box-shadow: 0 0 6px var(--needle); }
+.theme-btn:hover { opacity: 1; border-color: var(--needle); }
 .theme-btn:active { transform: scale(0.95); }
-body.preview .theme-btn, body.show-btn .theme-btn { display: flex; }
 
 /* ===================== ANIMASI ALA LEXUS LFA ===================== */
 /* Kontak ON: ring tachometer meluncur masuk dari kanan, jarum menyapu 0 -> max -> 0 */
