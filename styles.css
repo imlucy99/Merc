@@ -1,250 +1,127 @@
 :root {
-    --logo-size: 110px;                       /* ukuran logo intro */
-    --logo-filter: invert(1) contrast(1.6);   /* logo hitam -> putih. Kalau logo sudah putih/berwarna & transparan: ganti jadi none */
-    --speed-size: 24px;         /* ukuran angka speed */
-    --offset-bottom: 12px;      /* jarak HUD dari bawah layar (naikkan = HUD makin ke atas) */
-    --offset-x: 0px;            /* geser HUD horizontal (+ = ke kanan, - = ke kiri) */
-    --scale: 0.6;               /* ubah untuk memperbesar / memperkecil HUD */
+    --speed-size: 64px;     /* ukuran angka speed */
+    --offset-bottom: 16px;  /* jarak HUD dari bawah layar */
+    --offset-x: 0px;        /* geser HUD horizontal (+ kanan, - kiri) */
+    --scale: 0.5;           /* perbesar / perkecil HUD */
+    --plate: 0.78;          /* gelap latar cluster (0 = transparan) */
     --red: #ff2a2f;
     --green: #22d65a;
     --blue: #4db3ff;
     --yellow: #ffc21a;
-    --text: #f2f3f5;
     --muted: #8a8f99;
     --off: rgba(255, 255, 255, 0.13);
-    --line: rgba(255, 255, 255, 0.14);
-    --digital: 'Orbitron', 'Bahnschrift', 'Eurostile', 'Arial Narrow', sans-serif;
     --ui: 'Rajdhani', 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+/* ===== TEMA (ganti lewat data-theme di #hud, atau setTheme('night')) ===== */
+.cluster[data-theme="lfa"] {
+    --face1: #ffffff; --face2: #dde3ec; --num: #14171d; --tick: #1a1d25;
+    --needle: #2f7bff; --zone1: #ff3d12; --zone2: #ff7a4a;
+    --acc1: #2f7dff; --acc2: #bfe3ff; --inner: #070a14; --glow: #4db3ff; --gearc: #4db3ff;
+}
+.cluster[data-theme="night"] {
+    --face1: #1b1e26; --face2: #0a0b0f; --num: #eef0f4; --tick: #d5d9e2;
+    --needle: #ff2a2f; --zone1: #c40f14; --zone2: #ff4a50;
+    --acc1: #ff2a2f; --acc2: #ff9a9d; --inner: #030304; --glow: #ff2a2f; --gearc: #ff4a50;
+}
+.cluster[data-theme="ice"] {
+    --face1: #171d28; --face2: #080b11; --num: #e8f6ff; --tick: #bfe3ff;
+    --needle: #3ee6ff; --zone1: #ff3d12; --zone2: #ff7a4a;
+    --acc1: #1aa8ff; --acc2: #aaf4ff; --inner: #03060b; --glow: #3ee6ff; --gearc: #3ee6ff;
+}
+.cluster[data-theme="gold"] {
+    --face1: #201b12; --face2: #0b0905; --num: #fff2d6; --tick: #e8d3a0;
+    --needle: #ffb020; --zone1: #d11a14; --zone2: #ff5a3a;
+    --acc1: #ff9d00; --acc2: #ffe08a; --inner: #050402; --glow: #ffb020; --gearc: #ffb020;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-    width: 100vw;
-    height: 100vh;
+    width: 100vw; height: 100vh;
     background: transparent;
     overflow: hidden;
     font-family: var(--ui);
-    color: var(--text);
+    color: #f2f3f5;
     user-select: none;
 }
 
-/* Posisi HUD: tengah bawah layar */
 .hud-wrap {
     position: fixed;
     left: 50%;
     margin-left: var(--offset-x);
     bottom: var(--offset-bottom);
-    width: 1200px;
-    height: 210px;
+    width: 800px; height: 520px;
     transform: translateX(-50%) scale(var(--scale));
     transform-origin: bottom center;
 }
 
-/* Mode preview di browser (demo) */
 body.preview { background: radial-gradient(ellipse at 50% 120%, #1a1d24 0%, #000 70%); }
 body.preview .hud-wrap {
-    bottom: 50%;
-    margin-left: 0;
+    bottom: 50%; margin-left: 0;
     transform: translate(-50%, 50%) scale(var(--scale));
     transform-origin: center;
 }
 
-/* ===================== CLUSTER ===================== */
-.cluster { position: relative; width: 1200px; height: 210px; }
+.cluster { position: relative; width: 800px; height: 520px; }
 .dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 
-/* ----- teks & garis di dalam SVG ----- */
-.dial .n { font-family: var(--ui); font-weight: 700; font-style: italic; font-size: 17px; fill: #e8ebf2; }
-.dial .n.sm { font-size: 13px; }
-.dial .n.rl { fill: #ff6a6e; }
-.dial .lbl { font-family: var(--ui); font-weight: 700; font-size: 15px; fill: #f2f3f5; letter-spacing: 1px; }
-.dial .lbl.sm { font-size: 10px; fill: var(--muted); font-weight: 600; }
-.dial .val { font-family: var(--digital); font-weight: 600; font-size: 11px; fill: #cfd6e4; }
+/* ===== SVG ===== */
+.dial .plate { fill: rgba(4, 5, 8, var(--plate)); stroke: rgba(255, 255, 255, 0.07); stroke-width: 1.5; }
+.dial .bezel { fill: url(#bz); stroke: rgba(255, 255, 255, 0.28); stroke-width: 1.5; }
+.dial .face { fill: url(#fc); }
+.dial .tk { stroke: var(--tick); }
+.dial .tk.rl { stroke: var(--zone1); }
+.dial .num { font-family: var(--ui); font-weight: 500; font-size: 31px; fill: var(--num); }
+.dial .zone { fill: url(#zn); }
+.dial .inner { fill: var(--inner); }
+.dial .glow { fill: none; stroke: var(--glow); stroke-width: 4; stroke-linecap: round; opacity: 0.9; filter: drop-shadow(0 0 6px var(--glow)); }
+.dial .needle polygon { fill: var(--needle); filter: drop-shadow(0 0 4px var(--needle)); }
+.cluster.redline .dial .needle polygon { filter: drop-shadow(0 0 8px var(--needle)); }
+
+.dial .track { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 8; stroke-linecap: butt; }
+.dial .lit { fill: none; stroke: url(#ac); stroke-width: 8; filter: drop-shadow(0 0 4px var(--glow)); }
+.dial .stk { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.4; }
+.dial .sl { font-family: var(--ui); font-weight: 600; font-size: 13px; fill: #cfd6e4; }
 .dial .ico { color: #dfe1e6; }
+.dial .big { font-family: var(--ui); font-weight: 600; font-size: 26px; fill: #fff; }
+.dial .big.it { font-style: italic; }
+.dial .small { font-family: var(--ui); font-weight: 600; font-size: 11px; fill: var(--muted); letter-spacing: 1px; }
+.dial .val { font-family: var(--ui); font-weight: 600; font-size: 13px; fill: #cfd6e4; }
 
-.dial .tk { stroke: rgba(255, 255, 255, 0.85); }
-.dial .tk.fb { stroke: var(--blue); }
-.dial .tk.rl { stroke: var(--red); }
-
-.dial .track { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 3; }
-.dial .prog { fill: none; stroke: url(#arcg); stroke-width: 3; filter: drop-shadow(0 0 4px rgba(77, 179, 255, 0.85)); }
-.dial .prog.hid { display: none; }
-
-.dial .nd { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
-.dial .ndl { filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.7)); }
-.dial .pivot { fill: #20242c; stroke: #fff; stroke-width: 1.5; }
-
-.dial .seg { fill: rgba(255, 255, 255, 0.13); }
-.dial .seg.on { fill: #cfe4ff; }
-
-/* ----- peringatan ----- */
-.cluster.redline #rpm-arc { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(255, 42, 47, 0.9)); }
-.cluster.redline .dial .tk.rl { animation: blink 0.16s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0.25; } }
-@keyframes slowblink { 50% { opacity: 0.35; } }
-
-.cluster.fuel-low #fuel-needle .nd { stroke: var(--red); }
+/* ===== PERINGATAN (statis, tanpa kedip) ===== */
+.cluster.fuel-low #fuel-arc { stroke: var(--red); filter: drop-shadow(0 0 4px var(--red)); }
 .cluster.fuel-low #fuel-ico { color: var(--red); }
-.cluster.oil-low #oil-ico { color: var(--yellow); }
-.cluster.oil-low .dial .og.on { fill: var(--yellow); }
-.cluster.oil-low #oil-val { fill: var(--yellow); }
-.cluster.eng-warn .dial .eg.on { fill: var(--yellow); }
+.cluster.oil-low #oil-arc { stroke: var(--yellow); }
+.cluster.oil-low #oil-ico, .cluster.oil-low #oil-val { color: var(--yellow); fill: var(--yellow); }
+.cluster.eng-warn #eng-arc { stroke: var(--yellow); }
 .cluster.eng-warn #eng-ico, .cluster.eng-warn #eng-val { color: var(--yellow); fill: var(--yellow); }
-.cluster.eng-crit .dial .eg.on { fill: var(--red); animation: slowblink 0.9s steps(2) infinite; }
-.cluster.eng-crit #eng-ico { color: var(--red); animation: slowblink 0.9s steps(2) infinite; }
-.cluster.eng-crit #eng-val { fill: var(--red); }
+.cluster.eng-crit #eng-arc { stroke: var(--red); }
+.cluster.eng-crit #eng-ico, .cluster.eng-crit #eng-val { color: var(--red); fill: var(--red); }
 
-/* ===================== IKON INDIKATOR ===================== */
-.icon-item {
-    width: 26px;
-    height: 26px;
-    color: var(--off);
-    transition: color 0.15s ease, filter 0.15s ease;
-}
+/* ===== IKON INDIKATOR ===== */
+.icon-item { position: absolute; width: 28px; height: 28px; color: var(--off); }
 .icon-item svg { width: 100%; height: 100%; display: block; }
 .icon-item.active    { color: var(--green); filter: drop-shadow(0 0 5px rgba(34, 214, 90, 0.6)); }
 .icon-item.high-beam { color: var(--blue);  filter: drop-shadow(0 0 6px rgba(77, 179, 255, 0.8)); }
 .icon-item.warn      { color: var(--red);   filter: drop-shadow(0 0 5px rgba(255, 42, 47, 0.6)); }
-
 #headlight .beam-high { display: none; }
 #headlight.high-beam .beam-high { display: inline; }
 #headlight.high-beam .beam-low { display: none; }
 
-/* Boot: semua ikon menyala sebentar seperti mobil asli saat kunci kontak ON */
-.cluster.booting .icon-item { color: rgba(255, 255, 255, 0.55); }
-
-/* ===================== PANEL TENGAH (angka speed) ===================== */
+/* ===== PANEL TENGAH ===== */
 .center {
     position: absolute;
-    left: 500px;
-    top: 66px;
-    width: 200px;
-    height: 90px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    left: 290px; top: 172px;
+    width: 220px; height: 180px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.speed {
-    font-family: var(--digital);
-    font-weight: 900;
-    font-size: var(--speed-size);
-    line-height: 1;
-    white-space: nowrap;
-    margin-bottom: 8px;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 22px rgba(255, 255, 255, 0.25);
-}
+.speed { font-family: var(--ui); font-weight: 600; font-size: var(--speed-size); line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; color: #fff; }
 .speed .bright { color: #fff; }
 .dim { color: rgba(255, 255, 255, 0.1); }
-
-.unit-wrap { position: relative; display: flex; justify-content: center; align-items: center; }
-.unit { font-family: var(--ui); font-weight: 600; font-size: 17px; letter-spacing: 3px; color: #9aa1ad; line-height: 1; }
-.shift {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--digital);
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: 4px;
-    color: var(--red);
-    opacity: 0;
-}
-.cluster.redline .unit { opacity: 0; }
-.cluster.redline .shift { opacity: 1; animation: blink 0.16s steps(2) infinite; }
-
-/* ===================== BARIS BAWAH ===================== */
-.bottom {
-    position: absolute;
-    top: 166px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-.bottom.left  { left: 124px; }
-.bottom.right { left: 806px; }
-.vdiv { display: block; width: 1px; height: 22px; background: var(--line); }
-
-.clock { font-family: var(--ui); font-weight: 600; font-style: italic; font-size: 22px; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
-.gear { display: flex; align-items: baseline; gap: 8px; }
-.gear-val { min-width: 20px; font-family: var(--digital); font-weight: 800; font-style: italic; font-size: 19px; line-height: 1; color: var(--blue); text-shadow: 0 0 10px rgba(77, 179, 255, 0.5); }
-.c-lbl { font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted); line-height: 1; }
-.odo { display: flex; align-items: baseline; gap: 7px; }
-.odo-val { font-family: var(--ui); font-weight: 600; font-style: italic; font-size: 22px; line-height: 1; color: var(--blue); font-variant-numeric: tabular-nums; }
-.odo-unit { font-family: var(--ui); font-size: 13px; font-weight: 600; color: var(--muted); }
-
-/* ===================== INTRO (slam) ===================== */
-.intro {
-    position: absolute;
-    left: 500px;
-    top: 66px;
-    width: 200px;
-    height: 90px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    opacity: 0;
-    pointer-events: none;
-}
-.intro-text {
-    display: flex;
-    gap: 4px;
-    font-family: var(--digital);
-    font-weight: 900;
-    font-style: italic;
-    font-size: 34px;
-    line-height: 1;
-    color: #fff;
-    transform: skewX(-6deg);
-}
-.intro-text span { opacity: 0; display: inline-block; }
-.intro-line {
-    display: block;
-    height: 2px;
-    width: 0;
-    background: var(--red);
-    box-shadow: 0 0 8px rgba(255, 42, 47, 0.8);
-}
-
-.cluster.intro-on .intro { animation: introFade 2.7s ease both; }
-.cluster.intro-on .intro-text span { animation: slamIn 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) forwards; }
-.cluster.intro-on .intro-line { animation: lineGrow 0.6s 1.0s ease-out forwards; }
-.cluster.intro-on .center     { animation: centerIn 2.7s ease both; }
-
-@keyframes introFade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes lineGrow  { to { width: 120px; } }
-@keyframes centerIn  { 0%, 82% { opacity: 0; } 100% { opacity: 1; } }
-@keyframes slamIn {
-    0%   { opacity: 0; transform: translateX(-70px) skewX(-25deg); filter: blur(6px); }
-    70%  { opacity: 1; filter: blur(0); }
-    100% { opacity: 1; transform: none; filter: none; text-shadow: 0 0 14px rgba(255, 255, 255, 0.5); }
-}
-
-/* ----- Logo kustom (logo.png) ----- */
-.intro-logo {
-    display: none;
-    width: var(--logo-size);
-    height: var(--logo-size);
-    object-fit: contain;
-    filter: var(--logo-filter);   /* logo hitam -> putih */
-    mix-blend-mode: screen;
-    opacity: 0;
-}
-.intro.has-logo { opacity: 1; animation: none !important; }
-.intro.has-logo .intro-logo { display: block; }
-.intro.has-logo .intro-text,
-.intro.has-logo .intro-line { display: none; }
-.cluster.intro-on .intro.has-logo .intro-logo { animation: logoIn 2.7s ease-out both; }
-@keyframes logoIn {
-    0%   { opacity: 0; transform: scale(0.82); filter: var(--logo-filter) blur(6px); }
-    30%  { opacity: 1; transform: scale(1);    filter: var(--logo-filter) blur(0); }
-    80%  { opacity: 1; transform: scale(1);    filter: var(--logo-filter) blur(0); }
-    100% { opacity: 0; transform: scale(1.04); filter: var(--logo-filter) blur(0); }
-}
+.unit { font-weight: 600; font-size: 16px; letter-spacing: 2px; color: #aeb5c2; line-height: 1; margin-top: 2px; }
+.hline { display: block; width: 130px; height: 2px; background: #cfd6e4; margin: 7px 0 4px; }
+.gear-val { font-weight: 700; font-size: 58px; line-height: 1; color: #fff; min-width: 30px; text-align: center; }
+.c-lbl { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--muted); line-height: 1; }
+.odo { display: flex; align-items: baseline; gap: 6px; margin-top: 9px; }
+.odo-val { font-weight: 600; font-size: 19px; line-height: 1; color: var(--gearc); font-variant-numeric: tabular-nums; }
