@@ -1,280 +1,476 @@
 /* =========================================================
-   JGVRP Speedometer HUD - gaya Lexus LFA (MPH), tanpa animasi
+   JGVRP Speedometer HUD
    API (dipanggil dari game / CEF):
-     setSpeed(m/s -> MPH)  setRPM(0.0-1.0)  setFuel(0-1 | 0-100)
-     setHealth(0-1 | 0-1000)  setGear(n)  setHeadlights(0|1|2)
-     setSeatbelts(bool)  setEngine(bool)  setOdometer(miles)  setOil(psi|null)
-     setTheme('lfa'|'night'|'ice'|'gold')   setNeedleColor('#rrggbb' | null)
-   NUI: postMessage({ action:'setTheme', theme:'night' }) / { action:'setNeedleColor', color:'#ff0000' }
-   URL: ?theme=night&needle=ff0000
+     setSpeed(m/s)            setRPM(0.0 - 1.0)
+     setFuel(0-1 | 0-100)     setHealth(0-1 | 0-1000)
+     setGear(n)               setHeadlights(0 off | 1 low | 2 high)
+     setSeatbelts(bool)       setLeftIndicator(bool) / setRightIndicator(bool)
+     updateLockStatus(state)  setOdometer(miles)
    ========================================================= */
 
 const MPS_TO_MPH = 2.236936;
-const MAX_RPM = 10;      // skala tachometer (x1000), RPM 0-1 -> 0-10
-const REDLINE = 9;       // mulai zona merah (x1000)
-const OIL_MAX = 100;     // skala oil pressure (psi)
-const THEMES = ['lfa', 'night', 'ice', 'gold'];
+const MAX_RPM = 8;          // skala tachometer (x1000)
+const REDLINE = 7;          // mulai zona merah (x1000)
 
-const NOOP_EL = document.createElement('div');
+const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang sudah dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
 const elHud = $('hud');
 const svg = $('dial');
-const isTrueValue = (v) => v === true || v === 1 || v === '1' || v === 'true';
+
+// ---------- Helper Parser (JGRP) ----------
+function isLockedState(val) {
+    return val === true || val === 1 || val === "1" || val === "true" || val === 2 || val === "2";
+}
+function isTrueValue(val) {
+    return val === true || val === 1 || val === "1" || val === "true";
+}
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// ---------- Geometri (derajat SVG: 0 = kanan, searah jarum jam) ----------
-const CX = 400, CY = 262, SR = 300;
-const P = (r, a) => [CX + r * Math.cos((a * Math.PI) / 180), CY + r * Math.sin((a * Math.PI) / 180)];
-const f = (n) => n.toFixed(1);
-const arcD = (r, a1, a2) => {
-    const [x1, y1] = P(r, a1), [x2, y2] = P(r, a2);
-    return `M${f(x1)} ${f(y1)}A${r} ${r} 0 ${Math.abs(a2 - a1) > 180 ? 1 : 0} ${a2 > a1 ? 1 : 0} ${f(x2)} ${f(y2)}`;
-};
-const sector = (r1, r2, a1, a2) => {
-    const [a, b] = P(r2, a1), [c, d] = P(r2, a2), [e, g] = P(r1, a2), [h, i] = P(r1, a1);
-    return `M${f(h)} ${f(i)}L${f(a)} ${f(b)}A${r2} ${r2} 0 0 1 ${f(c)} ${f(d)}L${f(e)} ${f(g)}A${r1} ${r1} 0 0 0 ${f(h)} ${f(i)}Z`;
-};
-// Skala tacho non-linear seperti LFA: 0-4 dirapatkan (15 derajat/angka), 4-10 renggang (30 derajat/angka)
-const tachA = (v) => (v <= 4 ? 90 + 15 * v : 150 + 30 * (v - 4));
+// ---------- Geometri dial ----------
+const CX = 250, CY = 205;
+const START = 150, SWEEP = 240;                      // derajat (0 = kanan, searah jarum jam)
+const R_IN = 96, R_FILL = 172, R_TICK = 190;
+const R_BACK = 202;        // radius latar speedometer (pas di luar garis tick, R_TICK + 12)
+const BACK_BOTTOM = 306;   // sisi bawah latar dipotong rata tepat di bawah ujung tick (tidak melebihi dial)
+const rpmAngle = (ratio) => START + clamp01(ratio) * SWEEP;
 
-// Gauge samping: a0 = sudut nilai 0, a1 = sudut nilai penuh
-const SIDE = {
-    eng:  { a0: 187, a1: 218, lab: [['0', 0], ['50', 0.5], ['100', 1]] },
-    fuel: { a0: 142, a1: 172, lab: [['E', 0], ['&#189;', 0.5], ['F', 1]] },
-    oil:  { a0: 353, a1: 322, lab: [['0', 0], ['50', 0.5], ['100', 1]] },
+const pol = (r, a) => {
+    const t = (a * Math.PI) / 180;
+    return [(CX + r * Math.cos(t)).toFixed(2), (CY + r * Math.sin(t)).toFixed(2)];
 };
-function side(id, g) {
-    const N = 10;
-    let s = `<path class="track" d="${arcD(SR, g.a0, g.a1)}"/><path id="${id}-arc" class="lit" d="${arcD(SR, g.a0, g.a1)}" pathLength="100" stroke-dasharray="0 100"/>`;
-    for (let i = 0; i <= N; i++) {
-        const a = g.a0 + ((g.a1 - g.a0) * i) / N, maj = i % 5 === 0;
-        const [x1, y1] = P(SR - 8, a), [x2, y2] = P(SR - (maj ? 16 : 12), a);
-        s += `<line class="stk" x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}"/>`;
+function sector(r1, r2, a1, a2) {
+    if (a2 - a1 < 0.05) return '';
+    const [x1, y1] = pol(r2, a1), [x2, y2] = pol(r2, a2);
+    const [x3, y3] = pol(r1, a2), [x4, y4] = pol(r1, a1);
+    const large = a2 - a1 > 180 ? 1 : 0;
+    return `M${x1} ${y1}A${r2} ${r2} 0 ${large} 1 ${x2} ${y2}L${x3} ${y3}A${r1} ${r1} 0 ${large} 0 ${x4} ${y4}Z`;
+}
+function arcPath(r, a1, a2) {
+    const [x1, y1] = pol(r, a1), [x2, y2] = pol(r, a2);
+    return `M${x1} ${y1}A${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2} ${y2}`;
+}
+
+// Arc samping (segmen): kiri = FUEL (E bawah -> F atas), kanan = OIL PRESS (L bawah -> H atas)
+const SIDE_R1 = 205, SIDE_R2 = 216, SIDE_SEGS = 16;
+const FUEL_A = [157, 203];      // bawah -> atas (naik sudutnya)
+const OIL_A = [23, -23];        // bawah -> atas (turun sudutnya)
+
+function buildSideArc(cls, [aFrom, aTo]) {
+    const step = (aTo - aFrom) / SIDE_SEGS;
+    const gap = 0.7 * Math.sign(step);
+    let s = '';
+    for (let i = 0; i < SIDE_SEGS; i++) {
+        let a1 = aFrom + i * step + gap / 2, a2 = aFrom + (i + 1) * step - gap / 2;
+        if (a1 > a2) [a1, a2] = [a2, a1];
+        s += `<path class="seg ${cls}" data-i="${i}" d="${sector(SIDE_R1, SIDE_R2, a1, a2)}"/>`;
     }
-    g.lab.forEach(([t, v]) => {
-        const [x, y] = P(SR + 20, g.a0 + (g.a1 - g.a0) * v);
-        s += `<text class="sl" x="${f(x)}" y="${f(y)}" text-anchor="middle" dominant-baseline="central">${t}</text>`;
+    // garis skala tipis di dalam arc
+    const lo = Math.min(aFrom, aTo), hi = Math.max(aFrom, aTo);
+    s += `<path d="${arcPath(198, lo, hi)}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
+    [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
+        const a = aFrom + (aTo - aFrom) * t;
+        const [x1, y1] = pol(198, a), [x2, y2] = pol(t % 0.5 === 0 ? 191 : 194, a);
+        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>`;
     });
     return s;
 }
 
 function buildDial() {
-    let s = `<defs>
-      <radialGradient id="bz" cx=".5" cy=".4" r=".6"><stop offset="0" stop-color="#3a3e48"/><stop offset="1" stop-color="#0d0e12"/></radialGradient>
-      <radialGradient id="fc" cx=".5" cy=".4" r=".65"><stop offset="0" style="stop-color:var(--face1)"/><stop offset="1" style="stop-color:var(--face2)"/></radialGradient>
-      <linearGradient id="zn" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color:var(--zone1)"/><stop offset="1" style="stop-color:var(--zone2)"/></linearGradient>
-      <linearGradient id="ac" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--acc1)"/><stop offset="1" style="stop-color:var(--acc2)"/></linearGradient>
+    let s = `
+    <defs>
+      <radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY - 15}" r="${R_BACK}">
+        <stop offset="0" stop-color="#101216" stop-opacity="0.88"/>
+        <stop offset="0.8" stop-color="#0a0b0e" stop-opacity="0.9"/>
+        <stop offset="1" stop-color="#050506" stop-opacity="0.95"/>
+      </radialGradient>
+      <radialGradient id="fillGrad" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY}" r="${R_FILL}">
+        <stop offset="0.55" stop-color="currentColor" stop-opacity="0"/>
+        <stop offset="0.72" stop-color="currentColor" stop-opacity="0.28"/>
+        <stop offset="0.93" stop-color="currentColor" stop-opacity="0.72"/>
+        <stop offset="1" stop-color="currentColor" stop-opacity="0.95"/>
+      </radialGradient>
+      <radialGradient id="hub" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY - 20}" r="${R_IN}">
+        <stop offset="0" stop-color="#16181d"/>
+        <stop offset="1" stop-color="#060607"/>
+      </radialGradient>
+      <clipPath id="rpmClip"><path id="rpm-clip-path" d=""/></clipPath>
     </defs>
-    <rect class="plate" x="20" y="20" width="760" height="480" rx="70"/>
-    <circle class="bezel" cx="${CX}" cy="${CY}" r="240"/>
-    <circle class="face" cx="${CX}" cy="${CY}" r="206"/>`;
 
-    // Zona merah 9.2 - 9.8
-    s += `<path class="zone" d="${sector(128, 176, tachA(9.2), tachA(9.8))}"/>`;
+    <!-- latar: lingkaran dial yang dipotong rata di bawah -->
+    <path d="M ${CX - Math.sqrt(R_BACK * R_BACK - (BACK_BOTTOM - CY) ** 2)} ${BACK_BOTTOM} A ${R_BACK} ${R_BACK} 0 1 1 ${CX + Math.sqrt(R_BACK * R_BACK - (BACK_BOTTOM - CY) ** 2)} ${BACK_BOTTOM} Z" fill="url(#bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5" stroke-linejoin="round"/>
 
-    // Tick + angka tacho (angka 1 dan 3 tidak ditampilkan, sama seperti LFA)
-    const vals = [0, 1, 2, 3, 4];
-    for (let k = 4.5; k <= 10; k += 0.5) vals.push(k);
-    const labeled = [0, 2, 4, 5, 6, 7, 8, 9, 10];
-    vals.forEach((v) => {
-        const a = tachA(v), big = Number.isInteger(v), len = labeled.includes(v) ? 20 : big ? 12 : 8;
-        const [x1, y1] = P(198 - len, a), [x2, y2] = P(198, a);
-        s += `<line class="tk${v >= REDLINE ? ' rl' : ''}" x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke-width="${labeled.includes(v) ? 2.6 : 1.4}"/>`;
-    });
-    labeled.forEach((v) => {
-        const [x, y] = P(150, tachA(v));
-        s += `<text class="num" x="${f(x)}" y="${f(y)}" text-anchor="middle" dominant-baseline="central">${v}</text>`;
-    });
-    const [ux, uy] = P(176, 90);
-    s += `<text class="small" x="${f(ux + 34)}" y="${f(uy - 8)}" style="fill:var(--num)">x1000 r/min</text>`;
+    <!-- dasar dial -->
+    <path d="${sector(R_IN, R_TICK + 2, START, START + SWEEP)}" fill="rgba(255,255,255,0.025)"/>
+    <path d="${arcPath(R_TICK + 4, START - 2, START + SWEEP + 2)}" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
+    <path d="${arcPath(R_TICK + 9, START + 6, START + SWEEP - 6)}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
 
-    // Lingkaran gelap tengah + glow bawah + jarum
-    s += `<circle class="inner" cx="${CX}" cy="${CY}" r="118"/><path class="glow" d="${arcD(116, 40, 140)}"/>`;
-    s += `<g id="needle" class="needle"><polygon points="${CX + 36},${CY - 3.4} ${CX + 188},${CY - 0.7} ${CX + 188},${CY + 0.7} ${CX + 36},${CY + 3.4}"/></g>`;
+    <!-- isian merah mengikuti RPM -->
+    <g clip-path="url(#rpmClip)">
+      <path d="${sector(R_IN, R_FILL, START, START + SWEEP)}" fill="url(#fillGrad)"/>
+      <g stroke="currentColor" stroke-opacity="0.38" stroke-width="1">`;
+    for (let a = START; a <= START + SWEEP; a += 1.6) {
+        const [x1, y1] = pol(R_IN + 34, a), [x2, y2] = pol(R_FILL, a);
+        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }
+    s += `</g>
+    </g>
+    <path id="trail-1" fill="currentColor" fill-opacity="0.16" d=""/>
+    <path id="trail-2" fill="currentColor" fill-opacity="0.18" d=""/>
+    <path id="trail-3" fill="currentColor" fill-opacity="0.22" d=""/>`;
 
-    // Gauge samping
-    s += side('eng', SIDE.eng) + side('fuel', SIDE.fuel) + side('oil', SIDE.oil);
-    s += `<path class="track" style="stroke-width:2" d="${arcD(SR, 14, 52)}"/>`;
+    // tick halus per 100 RPM
+    s += '<g stroke-linecap="butt">';
+    for (let i = 0; i <= MAX_RPM * 10; i++) {
+        const a = rpmAngle(i / (MAX_RPM * 10));
+        const major = i % 10 === 0, half = i % 5 === 0;
+        const [x1, y1] = pol(major ? 164 : half ? 174 : 179, a), [x2, y2] = pol(R_TICK, a);
+        const rl = i >= REDLINE * 10 ? ' rl' : '';
+        s += `<line class="tk${rl}" data-i="${i}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${major ? 3.2 : half ? 2.2 : 1.4}"/>`;
+    }
+    s += '</g>';
 
-    // Ikon + nilai
-    const ic = (x, y) => `x="${f(x - 12)}" y="${f(y - 12)}" width="24" height="24"`;
-    let [x, y] = P(262, 202);
-    s += `<svg id="eng-ico" class="ico" ${ic(x, y)} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6M3 12h2.2M5.2 8.5h3.1V6.3h5v2.2h2.1l1.5 2h3.1v6.2h-2.2l-1.4 1.8H8.8l-3.6-3.6z"/></svg>`;
-    s += `<text id="eng-val" class="big" x="112" y="256" text-anchor="middle">100%</text><text class="small" x="112" y="274" text-anchor="middle">ENGINE</text>`;
-    [x, y] = P(262, 157);
-    s += `<svg id="fuel-ico" class="ico" ${ic(x, y)} viewBox="0 0 24 24" fill="currentColor"><path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>`;
-    [x, y] = P(262, 338);
-    s += `<svg id="oil-ico" class="ico" ${ic(x, y)} viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 10h4.2l1.3-2h2V6.5H8V5h6v1.5h-2V8h2.5l2 1.8 5-2.8 1 1.2-6.6 7.3H8.4L7 13H2.5zM20.2 14.6c0-.9 1.1-2.3 1.1-2.3s1.1 1.4 1.1 2.3c0 .6-.5 1.1-1.1 1.1s-1.1-.5-1.1-1.1z"/></svg>`;
-    s += `<text id="oil-val" class="val" x="${f(x)}" y="${f(y + 26)}" text-anchor="middle">0 psi</text>`;
-    s += `<text id="clock" class="big it" x="688" y="262" text-anchor="middle" dominant-baseline="central">00:00</text>`;
+    // zona merah 7-8
+    const redArc = arcPath(160, rpmAngle(REDLINE / MAX_RPM), rpmAngle(1));
+    s += `<path id="redline-glow" d="${redArc}" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="10"/>
+          <path id="redline-arc" d="${redArc}" fill="none" stroke="currentColor" stroke-width="4"/>`;
+
+    // angka 0-8
+    for (let v = 0; v <= MAX_RPM; v++) {
+        const [x, y] = pol(140, rpmAngle(v / MAX_RPM));
+        s += `<text class="num${v >= REDLINE ? ' rl' : ''}" data-v="${v}" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">${v}</text>`;
+    }
+    const [lx, ly] = pol(118, 270);
+    s += `<text class="scale-lbl" x="${lx}" y="${Number(ly) + 6}" text-anchor="middle">x1000 r/min</text>`;
+
+    // hub tengah
+    s += `<circle cx="${CX}" cy="${CY}" r="${R_IN}" fill="url(#hub)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
+          <circle cx="${CX}" cy="${CY}" r="${R_IN - 8}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+
+    // jarum digital (garis merah + palang kecil)
+    s += `<g id="needle" transform="rotate(${START} ${CX} ${CY})">
+            <line x1="${CX + R_IN + 2}" y1="${CY}" x2="${CX + R_TICK + 4}" y2="${CY}" stroke="currentColor" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
+            <line x1="${CX + R_IN + 2}" y1="${CY}" x2="${CX + R_TICK + 4}" y2="${CY}" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+            <line x1="${CX + R_FILL - 2}" y1="${CY - 7}" x2="${CX + R_FILL - 2}" y2="${CY + 7}" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            <line x1="${CX + R_IN + 30}" y1="${CY}" x2="${CX + R_TICK + 2}" y2="${CY}" stroke="#ffffff" stroke-width="1.2"/>
+          </g>`;
+
+
     svg.innerHTML = s;
 }
 buildDial();
 
-const nNeedle = $('needle'), aEng = $('eng-arc'), aFuel = $('fuel-arc'), aOil = $('oil-arc');
+// ---------- Teks intro: ganti di index.html pada  data-text="ANNIS"  (huruf & ukuran diatur otomatis) ----------
+(function () {
+    const el = $('intro-text');
+    if (el === NOOP_EL) return;
+    const text = (el.dataset.text || el.textContent || 'ANNIS').trim().toUpperCase();
+    const chars = Array.from(text);
+    el.textContent = '';
+    chars.forEach((ch, i) => {
+        const span = document.createElement('span');
+        span.textContent = ch === ' ' ? '\u00A0' : ch;
+        span.style.animationDelay = (0.3 + i * 0.09).toFixed(2) + 's';
+        el.appendChild(span);
+    });
+    // ukuran huruf mengecil otomatis kalau tulisan panjang, supaya tetap muat di lingkaran dalam
+    el.style.fontSize = Math.max(12, Math.min(28, Math.floor(138 / (chars.length * 0.95)))) + 'px';
+})();
 
-// ---------- State & render (langsung, tanpa animasi) ----------
-const state = { mph: 0, mps: 0, rpm: 0, fuel: 1, health: 1, oilOverride: null, belted: false, engine: false, lastMph: -1 };
-const dash = (el, r) => el.setAttribute('stroke-dasharray', `${(clamp01(r) * 100).toFixed(1)} 100`);
-const setText = (el, t) => { t = String(t); if (el.textContent !== t) el.textContent = t; };
-const setClass = (el, c) => { if (el.className !== c) el.className = c; };
+const needle = $('needle');
+const clipPath = $('rpm-clip-path');
+const trails = [$('trail-1'), $('trail-2'), $('trail-3')];
+const ticks = svg.querySelectorAll('.tk');
+const nums = svg.querySelectorAll('.num');
 
-function oilTarget() {
-    if (state.oilOverride !== null) return Math.min(OIL_MAX, state.oilOverride);
-    if (!state.engine) return 0;
-    return Math.min(OIL_MAX, (18 + state.rpm * 52) * (0.45 + 0.55 * state.health));
+// ---------- State ----------
+const state = {
+    mph: 0,
+    rpm: 0,          // target 0-1 dari game
+    rpmShown: 0,     // nilai yang di-smooth untuk animasi
+    health: 1,       // 0-1
+    fuel: 0,
+    healthShown: 0,  // 0-1, di-smooth untuk arc OIL PRESS
+    lastTick: -1,
+    lastMphShown: -1,
+    trip: 0,
+    belted: false,
+    engine: false,   // dari setEngine(); alarm hanya bunyi saat mesin hidup
+    mps: 0,          // kecepatan mentah (m/s)
+};
+let bootUntil = performance.now() + 1700;
+
+let lastAngle = NaN, lastRedline = null;
+function renderRpm(ratio) {
+    const a = rpmAngle(ratio);
+    if (!(Math.abs(a - lastAngle) < 0.05)) {          // tulis ke SVG hanya kalau jarum benar-benar bergerak
+        lastAngle = a;
+        needle.setAttribute('transform', `rotate(${a.toFixed(2)} ${CX} ${CY})`);
+        clipPath.setAttribute('d', sector(R_IN, R_FILL + 1, START, a));
+        trails[0].setAttribute('d', sector(R_IN + 40, R_FILL, Math.max(START, a - 34), a));
+        trails[1].setAttribute('d', sector(R_IN + 55, R_FILL, Math.max(START, a - 16), a));
+        trails[2].setAttribute('d', sector(R_IN + 70, R_FILL, Math.max(START, a - 6), a));
+    }
+
+    const lit = Math.round(ratio * MAX_RPM * 10);
+    if (lit !== state.lastTick) {
+        state.lastTick = lit;
+        ticks.forEach((t, i) => t.classList.toggle('on', i <= lit && ratio > 0.003));
+        nums.forEach((n, v) => n.classList.toggle('on', v * 10 <= lit));
+    }
+    const red = ratio >= REDLINE / MAX_RPM;
+    if (red !== lastRedline) {
+        lastRedline = red;
+        elHud.classList.toggle('redline', red);
+    }
 }
-function render() {
-    const rpmV = state.rpm * MAX_RPM;
-    nNeedle.setAttribute('transform', `rotate(${tachA(rpmV).toFixed(2)} ${CX} ${CY})`);
-    dash(aEng, state.health);
-    dash(aFuel, state.fuel);
-    const oil = oilTarget();
-    dash(aOil, oil / OIL_MAX);
-    setText($('oil-val'), Math.round(oil) + ' psi');
-    elHud.classList.toggle('redline', rpmV >= REDLINE);
-    elHud.classList.toggle('oil-low', state.engine && oil < 15);
-}
 
-const padDigits = (n, len) => {
+// Helper: tulis DOM hanya kalau isinya memang berubah (hindari repaint sia-sia)
+function setText(el, txt) { txt = String(txt); if (el.textContent !== txt) el.textContent = txt; }
+function setClass(el, cls) { if (el.className !== cls) el.className = cls; }
+
+function padDigits(n, len) {
     const s = String(Math.max(0, n)).padStart(len, '0');
-    const i = s.search(/[1-9]/), cut = i === -1 ? len - 1 : i;
+    const firstSig = s.search(/[1-9]/);
+    const cut = firstSig === -1 ? len - 1 : firstSig;
     return `<span class="dim">${s.slice(0, cut)}</span><span class="bright">${s.slice(cut)}</span>`;
+}
+
+// ---------- Loop animasi ----------
+// Hemat FPS: loop BERHENTI saat tidak ada yang bergerak (jarum diam), dan dibatasi MAX_FPS.
+const MAX_FPS = 40;
+const FRAME_MS = 1000 / MAX_FPS;
+let lastFrame = 0, rafId = 0;
+function kick() {                         // bangunkan loop kalau sedang berhenti
+    if (rafId) return;
+    lastFrame = performance.now() - FRAME_MS;
+    rafId = requestAnimationFrame(frame);
+}
+function frame(now) {
+    rafId = 0;
+    if (now - lastFrame < FRAME_MS - 2) { rafId = requestAnimationFrame(frame); return; }   // lewati frame (batas FPS)
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    let target = state.rpm;
+    if (now < bootUntil) {
+        // sweep jarum saat kontak ON
+        const t = 1 - (bootUntil - now) / 1700;
+        target = t < 0.45 ? t / 0.45 : Math.max(0, 1 - (t - 0.55) / 0.45);
+        if (t >= 0.45 && t < 0.55) target = 1;
+    } else if (elHud.classList.contains('booting')) {
+        elHud.classList.remove('booting');
+    }
+
+    const k = now < bootUntil ? 1 : Math.min(1, dt * 14);
+    state.rpmShown += (target - state.rpmShown) * k;
+    if (Math.abs(target - state.rpmShown) < 0.0005) state.rpmShown = target;
+    renderRpm(state.rpmShown);
+
+    // OIL PRESS = nilai setHealth (0-100%), di-smooth
+    const hp = now < bootUntil ? target : state.health;
+    state.healthShown += (hp - state.healthShown) * Math.min(1, dt * 6);
+    if (Math.abs(hp - state.healthShown) < 0.0005) state.healthShown = hp;
+    setText($('oil-val'), Math.round(state.healthShown * 100));
+
+    // lanjut hanya kalau masih ada yang bergerak
+    if (now < bootUntil || state.rpmShown !== target || state.healthShown !== hp) rafId = requestAnimationFrame(frame);
+}
+kick();
+
+// ---------- 1. Kecepatan ----------
+window.setSpeed = function (speed) {
+    const mph = Math.round(Number(speed || 0) * MPS_TO_MPH);
+    state.mph = mph;
+    state.mps = Number(speed || 0);
+    if (mph !== state.lastMphShown) {                 // ganti DOM hanya kalau angkanya berubah
+        state.lastMphShown = mph;
+        $('speed-display').innerHTML = padDigits(mph, 3);
+    }
 };
 
-window.setSpeed = function (speed) {
-    state.mps = Number(speed || 0);
-    state.mph = state.mps * MPS_TO_MPH;
-    const mph = Math.round(state.mph);
-    if (mph !== state.lastMph) { state.lastMph = mph; $('speed-display').innerHTML = padDigits(mph, 3); }
+// ---------- 2. RPM (0.0 - 1.0) ----------
+window.setRPM = function (rpm) {
+    const r = clamp01(Number(rpm || 0));
+    if (r === state.rpm) return;
+    state.rpm = r;
+    kick();
 };
-window.setRPM = function (rpm) { state.rpm = clamp01(Number(rpm || 0)); render(); };
+
+// ---------- 3. Fuel ----------
 window.setFuel = function (fuel) {
-    const v = Number(fuel || 0);
-    state.fuel = clamp01(v > 1 ? v / 100 : v);
-    elHud.classList.toggle('fuel-low', state.fuel < 0.2);
-    render();
+    const val = Number(fuel || 0);
+    const percent = clamp01(val > 1 ? val / 100 : val);
+    state.fuel = percent;
+    setText($('fuel-val'), Math.round(percent * 100));
+    elHud.classList.toggle('fuel-low', percent < 0.20);
 };
+
+// ---------- 4. Engine Health -> arc OIL PRESS (nilai & arc langsung dari setHealth) ----------
 window.setHealth = function (health) {
-    const v = Number(health || 0);
-    state.health = clamp01(v > 1 ? v / 1000 : v);
-    setText($('eng-val'), Math.round(state.health * 100) + '%');
-    elHud.classList.toggle('eng-warn', state.health <= 0.5 && state.health > 0.3);
-    elHud.classList.toggle('eng-crit', state.health <= 0.3);
-    render();
+    const val = Number(health || 0);
+    const percent = clamp01(val > 1 ? val / 1000 : val);
+    if (percent === state.health) return;
+    state.health = percent;
+    kick();
+
+    const warn = percent <= 0.5 && percent > 0.3;
+    const crit = percent <= 0.3;
+    elHud.classList.toggle('oil-warn', warn);
+    elHud.classList.toggle('oil-crit', crit);
+
 };
-window.setOil = function (psi) {
-    state.oilOverride = (psi === null || psi === undefined || psi === '') ? null : Math.max(0, Number(psi) || 0);
-    render();
-};
+
+// ---------- 5. Gear ----------
 window.setGear = function (gear) {
     let g = String(gear);
     if (gear == 0 || g === '0' || g.toUpperCase() === 'R') g = 'R';
     else if (gear === null || gear === undefined || g === '' || g.toUpperCase() === 'N') g = 'N';
     setText($('gear'), g);
-    $('gear').style.color = g === 'R' ? 'var(--red)' : '';
+    const col = g === 'R' ? '#ff2a2f' : '';
+    if ($('gear').style.color !== col) $('gear').style.color = col;
 };
-window.setHeadlights = function (st) {
-    const v = Number(st || 0);
-    setClass($('headlight'), v === 2 ? 'icon-item high-beam' : v === 1 ? 'icon-item active' : 'icon-item');
+
+// ---------- 6. Lock / Unlock Vehicle (Mendukung semua alternatif panggilan JGRP) ----------
+window.updateLockStatus = function (state) {
+    const locked = isLockedState(state);
+    setClass($('door-lock'), locked ? 'icon-item locked' : 'icon-item');  // gembok tertutup kuning = terkunci
+    elHud.classList.toggle('is-locked', locked);
 };
+window.setDoors = window.updateLockStatus;
+window.setDoorLock = window.updateLockStatus;
+window.setVehicleLocked = window.updateLockStatus;
+window.setLocked = window.updateLockStatus;
+window.setLock = window.updateLockStatus;
+window.toggleLock = window.updateLockStatus;
+
+// ---------- 7. Lampu (0 = mati, 1 = low beam, 2 = high beam) ----------
+window.setHeadlights = function (state) {
+    const val = Number(state || 0);
+    // satu ikon saja: low = hijau (garis miring), high = biru (garis lurus), mati = redup
+    setClass($('headlight'), val === 2 ? 'icon-item high-beam' : val === 1 ? 'icon-item active' : 'icon-item');
+};
+
+// ---------- 8. Sein (dinonaktifkan) ----------
+window.setLeftIndicator = function () {};    // sein dihapus dari tampilan
+window.setRightIndicator = function () {};
+
+// ---------- 9. Seatbelt (true = terpasang) ----------
 window.setSeatbelts = function (val) {
-    state.belted = isTrueValue(val);
-    setClass($('seatbelts'), state.belted ? 'icon-item active' : 'icon-item warn');
+    const on = isTrueValue(val);
+    state.belted = on;
+    setClass($('seatbelts'), on ? 'icon-item active' : 'icon-item warn');
 };
-window.setEngine = function (on) {
-    state.engine = isTrueValue(on);
-    setClass($('enginelamp'), state.engine ? 'icon-item active' : 'icon-item');
-    render();
-};
-window.setOdometer = function (d) {
-    setText($('odometer'), Number(d || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-};
-window.playIntro = function () {};   // intro dihapus (dibiarkan agar pemanggilan lama tidak error)
-window.setLeftIndicator = window.setRightIndicator = window.setLocked = function () {};
 
-// ---------- Tema & warna jarum ----------
-window.setTheme = function (name) {
-    if (!THEMES.includes(name)) return;
-    elHud.dataset.theme = name;
-    window.setNeedleColor(null);    // pakai warna jarum bawaan tema
-    try { localStorage.setItem('hudTheme', name); } catch (e) {}
+// ---------- 10. Odometer (mil) ----------
+window.setOdometer = function (distance) {
+    setText($('odometer'), Number(distance || 0).toFixed(1));
 };
-window.setNeedleColor = function (color) {
-    if (color && /^#?[0-9a-f]{3,8}$/i.test(String(color))) {
-        const c = String(color).startsWith('#') ? color : '#' + color;
-        elHud.style.setProperty('--needle', c);
-        try { localStorage.setItem('hudNeedle', c); } catch (e) {}
-    } else {
-        elHud.style.removeProperty('--needle');
-        try { localStorage.removeItem('hudNeedle'); } catch (e) {}
-    }
+
+// ---------- Intro ANNIS (bisa dipanggil ulang: playIntro()) ----------
+let introTimer;
+window.playIntro = function () {
+    elHud.classList.remove('intro-on');
+    void elHud.offsetWidth;                 // restart animasi CSS
+    elHud.classList.add('intro-on');
+    bootUntil = performance.now() + 1700;   // jarum RPM ikut menyapu
+    kick();
+    clearTimeout(introTimer);
+    introTimer = setTimeout(() => elHud.classList.remove('intro-on'), 2750);
 };
-(function () {
-    const q = new URLSearchParams(location.search);
-    let theme = q.get('theme'), needle = q.get('needle');
-    try { theme = theme || localStorage.getItem('hudTheme'); needle = needle || localStorage.getItem('hudNeedle'); } catch (e) {}
-    if (THEMES.includes(theme)) elHud.dataset.theme = theme;
-    if (needle) window.setNeedleColor(needle);
-})();
 
-// ---------- Jam ----------
-function tickClock() {
-    const d = new Date();
-    setText($('clock'), String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
-}
-tickClock();
-setInterval(tickClock, 10000);
-
-// ---------- Suara peringatan (Web Audio) - matikan: setHudSound(false) ----------
-const SND = { enabled: true, volume: 0.3, seatbeltEvery: 2000, seatbeltMinSpeed: 1, fuelBelow: 0.2, fuelEvery: 30000 };
+// ---------- Suara peringatan (dibuat lewat Web Audio, tanpa file mp3) ----------
+// Ubah nilai di SND untuk mengatur suara. Matikan semua: setHudSound(false)
+const SND = {
+    enabled: true,
+    volume: 0.3,            // 0 - 1
+    seatbeltEvery: 2000,    // ms jeda antar bunyi seatbelt (berulang terus sampai seatbelt dipasang)
+    seatbeltMinSpeed: 1,    // m/s: seatbelt hanya bunyi saat mobil bergerak lebih cepat dari ini (0 = selalu, 1 m/s ~ 2 mph)
+    fuelBelow: 0.20,        // bensin di bawah 20%
+    fuelEvery: 30000,       // ms jeda antar chime bensin
+};
+// Suara hanya bunyi kalau mesin HIDUP (setEngine(true)).
+// Matikan via link: ?nosound / ?mute / ?silent / ?noalarm   Volume via link: ?volume=0.0-1.0
 try {
     const q = new URLSearchParams(location.search);
     ['nosound', 'mute', 'silent', 'noalarm', 'noseatbelt', 'nobelt'].forEach((k) => {
         if (q.has(k) && !['0', 'false', 'no', 'off'].includes((q.get(k) || '').toLowerCase())) SND.enabled = false;
     });
-    if (q.has('volume') && !isNaN(parseFloat(q.get('volume')))) SND.volume = clamp01(parseFloat(q.get('volume')));
+    if (q.has('volume') && !isNaN(parseFloat(q.get('volume')))) SND.volume = Math.max(0, Math.min(1, parseFloat(q.get('volume'))));
 } catch (e) {}
 let audioCtx = null;
 function getAudio() {
-    if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; audioCtx = new AC(); }
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        audioCtx = new AC();
+    }
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     return audioCtx;
 }
 function tone(freq, start, dur, type, vol) {
-    const a = getAudio(); if (!a) return;
-    const t0 = a.currentTime + start, osc = a.createOscillator(), gain = a.createGain();
+    const a = getAudio();
+    if (!a) return;
+    const t0 = a.currentTime + start;
+    const osc = a.createOscillator(), gain = a.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t0);
     gain.gain.setValueAtTime(0.0001, t0);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, SND.volume * vol), t0 + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     osc.connect(gain).connect(a.destination);
-    osc.start(t0); osc.stop(t0 + dur + 0.03);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
 }
 window.playHudSound = function (kind) {
     if (!SND.enabled) return;
-    if (kind === 'seatbelt') { tone(1000, 0, 0.14, 'triangle', 1); tone(1000, 0.22, 0.14, 'triangle', 1); }
-    else if (kind === 'fuel') { tone(988, 0, 0.45, 'sine', 1); tone(1976, 0, 0.3, 'sine', 0.25); tone(740, 0.3, 0.7, 'sine', 1); tone(1480, 0.3, 0.45, 'sine', 0.25); }
+    if (kind === 'seatbelt') {                       // beep-beep
+        tone(1000, 0.00, 0.14, 'triangle', 1);
+        tone(1000, 0.22, 0.14, 'triangle', 1);
+    } else if (kind === 'fuel') {                    // ding-dong
+        tone(988, 0.00, 0.45, 'sine', 1);
+        tone(1976, 0.00, 0.30, 'sine', 0.25);
+        tone(740, 0.30, 0.70, 'sine', 1);
+        tone(1480, 0.30, 0.45, 'sine', 0.25);
+    }
 };
-window.setHudSound = function (on, volume) { SND.enabled = !!on; if (volume !== undefined) SND.volume = clamp01(Number(volume)); };
-window.setSeatbeltSoundEnabled = (on) => window.setHudSound(!!on);
-window.setSeatbeltVolume = (v) => { const n = parseFloat(v); if (!isNaN(n)) window.setHudSound(SND.enabled, n); };
+window.setHudSound = function (on, volume) {
+    SND.enabled = !!on;
+    if (volume !== undefined) SND.volume = clamp01(Number(volume));
+};
+// Browser butuh interaksi pertama untuk membuka audio (di CEF/FiveM biasanya langsung jalan)
 ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, getAudio, { once: true }));
 
-let lastSeat = -Infinity, lastFuel = -Infinity;
+let lastSeatBeep = -Infinity, lastFuelChime = -Infinity;
 setInterval(() => {
-    if (!SND.enabled) return;
+    if (!SND.enabled || elHud.classList.contains('intro-on')) return;
     const now = performance.now();
+
+    // Seatbelt: mesin hidup + belum dipasang + mobil bergerak
     const seatWarn = state.engine && !state.belted && state.mps > SND.seatbeltMinSpeed;
-    if (!seatWarn) lastSeat = -Infinity;
-    else if (now - lastSeat >= SND.seatbeltEvery) { lastSeat = now; window.playHudSound('seatbelt'); }
+    if (!seatWarn) lastSeatBeep = -Infinity;          // kondisi hilang -> siap bunyi lagi saat muncul
+    else if (now - lastSeatBeep >= SND.seatbeltEvery) {
+        lastSeatBeep = now;
+        window.playHudSound('seatbelt');
+    }
+
+    // Bensin < 20% dan mesin hidup
     const fuelWarn = state.engine && state.fuel < SND.fuelBelow;
-    if (!fuelWarn) lastFuel = -Infinity;
-    else if (now - lastFuel >= SND.fuelEvery) { lastFuel = now; window.playHudSound('fuel'); }
+    if (!fuelWarn) lastFuelChime = -Infinity;
+    else if (now - lastFuelChime >= SND.fuelEvery) {
+        lastFuelChime = now;
+        window.playHudSound('fuel');
+    }
 }, 250);
 
-// ---------- Pesan NUI ----------
+// ---------- Engine (JGVRP: setEngine(true/false)) ----------
+window.setEngine = function (on) {
+    state.engine = isTrueValue(on);
+};
+// Alias kontrol suara (nama sama dengan template JGVRP)
+window.setSeatbeltSoundEnabled = (on) => window.setHudSound(!!on);
+window.setSeatbeltVolume = (v) => { const n = parseFloat(v); if (!isNaN(n)) window.setHudSound(SND.enabled, n); };
+
+// Pesan gaya NUI: window.postMessage({ action: 'setEngine', state: true })
 window.addEventListener('message', function (event) {
     const d = event.data;
     if (!d || typeof d !== 'object' || !d.action) return;
@@ -285,54 +481,86 @@ window.addEventListener('message', function (event) {
             case 'setRPM': window.setRPM(Number(d.rpm) || 0); break;
             case 'setFuel': window.setFuel(Number(d.fuel) || 0); break;
             case 'setHealth': window.setHealth(Number(d.health) || 0); break;
-            case 'setOil': window.setOil(d.oil !== undefined ? d.oil : d.psi); break;
             case 'setGear': window.setGear(d.gear !== undefined ? d.gear : 'N'); break;
             case 'setHeadlights': window.setHeadlights(Number(d.state) || 0); break;
             case 'setSeatbelts': window.setSeatbelts(!!d.state); break;
             case 'setOdometer': window.setOdometer(Number(d.distance) || 0); break;
-            case 'setTheme': window.setTheme(d.theme); break;
-            case 'setNeedleColor': window.setNeedleColor(d.color); break;
             case 'muteSeatbelt': window.setSeatbeltSoundEnabled(false); break;
             case 'unmuteSeatbelt': window.setSeatbeltSoundEnabled(true); break;
             case 'setSeatbeltSound': window.setSeatbeltSoundEnabled(d.enabled !== undefined ? !!d.enabled : !d.disabled); break;
             case 'setVolume': window.setSeatbeltVolume(d.volume !== undefined ? d.volume : d.value); break;
         }
-    } catch (e) {}
+    } catch (e) { /* abaikan pesan rusak */ }
+});
+
+// ---------- Message handler ----------
+window.addEventListener('message', function (event) {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'setDoors' || data.action === 'setDoors' || data.type === 'lock') {
+        window.updateLockStatus(data.status !== undefined ? data.status : data.state);
+    }
+    if (data.type === 'playIntro' || data.action === 'playIntro') window.playIntro();
 });
 
 // ---------- Nilai awal ----------
-window.setSpeed(0); window.setRPM(0); window.setFuel(100); window.setHealth(1000);
-window.setGear('N'); window.setHeadlights(0); window.setSeatbelts(false); window.setEngine(false); window.setOdometer(0);
+window.setSpeed(0);
+window.setRPM(0);
+window.setFuel(100);
+window.setHealth(1000);
+window.setGear('N');
+window.setHeadlights(0);
+window.setSeatbelts(false);
+window.setEngine(false);
+window.updateLockStatus(false);
+window.setOdometer(0);
+// ---------- Tema ----------
+const THEMES = [['red', 'Merah'], ['blue', 'Biru LFA'], ['orange', 'Oranye'], ['green', 'Hijau'], ['white', 'Putih']];
+let themeIdx = 0, swapTimer;
+window.setTheme = function (name, animate) {
+    let i = typeof name === 'number' ? name : THEMES.findIndex((t) => t[0] === name);
+    if (i < 0) i = 0;
+    themeIdx = ((i % THEMES.length) + THEMES.length) % THEMES.length;
+    document.body.dataset.theme = THEMES[themeIdx][0];
+    setText($('theme-name'), THEMES[themeIdx][1]);
+    try { localStorage.setItem('hudTheme', THEMES[themeIdx][0]); } catch (e) {}
+    if (animate === false) return;
+    elHud.classList.remove('swap'); void elHud.offsetWidth; elHud.classList.add('swap');
+    bootUntil = performance.now() + 1700;      // jarum menyapu lagi
+    kick();
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(() => elHud.classList.remove('swap'), 1000);
+};
+window.nextTheme = () => window.setTheme(themeIdx + 1);
+$('theme-btn').addEventListener('click', window.nextTheme);
+window.addEventListener('keydown', (e) => { if (e.key === 't' || e.key === 'T') window.nextTheme(); });
+window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (d && d.action === 'setTheme') window.setTheme(d.theme !== undefined ? d.theme : d.state);
+    if (d && d.action === 'nextTheme') window.nextTheme();
+});
+(function () {
+    const q = new URLSearchParams(location.search);
+    if (q.has('button')) document.body.classList.add('show-btn');
+    let saved = q.get('theme');
+    try { saved = saved || localStorage.getItem('hudTheme'); } catch (e) {}
+    window.setTheme(saved || 'red', false);
+})();
+
+window.playIntro();   // animasi ANNIS saat HUD pertama kali dipakai
 
 // ---------- Demo (otomatis di preview Netlify atau dengan ?demo) ----------
 const params = new URLSearchParams(location.search);
 const isPreview = params.has('demo') || (/netlify\.app$/.test(location.hostname) && !params.has('nodemo'));
+
 if (isPreview) {
     document.body.classList.add('preview');
-    const fit = () => document.documentElement.style.setProperty('--scale', Math.min(1, window.innerWidth / 860, window.innerHeight / 560));
-    fit(); window.addEventListener('resize', fit);
-
-    // Panel pilih tema + warna jarum (hanya muncul di demo)
-    const bar = document.createElement('div');
-    bar.style.cssText = 'position:fixed;top:12px;left:12px;display:flex;gap:6px;align-items:center;font:600 13px Rajdhani,sans-serif;color:#cfd6e4;z-index:9';
-    THEMES.forEach((t) => {
-        const b = document.createElement('button');
-        b.textContent = t;
-        b.style.cssText = 'padding:4px 10px;border:1px solid #444;background:#111;color:#fff;border-radius:4px;cursor:pointer';
-        b.onclick = () => window.setTheme(t);
-        bar.appendChild(b);
-    });
-    const pick = document.createElement('input');
-    pick.type = 'color'; pick.value = '#2f7bff'; pick.title = 'Warna jarum';
-    pick.oninput = () => window.setNeedleColor(pick.value);
-    bar.append('jarum:', pick);
-    document.body.appendChild(bar);
-
-    const GEAR_TOP = [0, 28, 48, 72, 98, 128, 165];
+    const GEAR_TOP = [0, 28, 48, 72, 98, 128, 165];   // batas mph per gigi
     let mps = 0, gear = 1, throttle = true, odo = 18452.3, health = 1000, fuel = 86, t = 0;
+
     setTimeout(() => {
         setEngine(true);
-        setTimeout(() => setSeatbelts(true), 9000);
+        setTimeout(() => setSeatbelts(true), 9000);   // belum dipasang 9 detik pertama -> terdengar beep
         setHeadlights(1);
         setInterval(() => {
             t += 0.05;
@@ -340,15 +568,27 @@ if (isPreview) {
             if (throttle) mps += 0.38 / gear; else mps -= 0.55;
             if (mph > 150) throttle = false;
             if (mps <= 0) { mps = 0; throttle = true; }
+
             while (gear < 6 && mph > GEAR_TOP[gear]) gear++;
             while (gear > 1 && mph < GEAR_TOP[gear - 1] - 6) gear--;
             const lo = GEAR_TOP[gear - 1], hi = GEAR_TOP[gear];
-            const rpm = 0.11 + clamp01((mph - lo) / (hi - lo)) * (throttle ? 0.86 : 0.6);
-            health = Math.max(180, health - 0.9); if (health <= 180) health = 1000;
+            const rpm = 0.11 + clamp01((mph - lo) / (hi - lo)) * (throttle ? 0.82 : 0.6);
+
+            health = Math.max(180, health - 0.9);
+            if (health <= 180) health = 1000;
             fuel = fuel <= 4 ? 86 : fuel - 0.02;
             odo += (mph * 0.05) / 3600;
-            setSpeed(mps); setRPM(rpm); setGear(gear); setHealth(health); setFuel(fuel); setOdometer(odo);
+
+            setSpeed(mps);
+            setRPM(rpm);
+            setGear(gear);
+            setHealth(health);
+            setFuel(fuel);
+            setOdometer(odo);
+            setLeftIndicator(Math.floor(t / 6) % 4 === 1);
+            setRightIndicator(Math.floor(t / 6) % 4 === 3);
             setHeadlights(Math.floor(t / 9) % 3 === 2 ? 2 : 1);
+            updateLockStatus(Math.floor(t / 7) % 2);
         }, 50);
-    }, 1000);
+    }, 3000);
 }

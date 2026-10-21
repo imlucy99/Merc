@@ -1,127 +1,346 @@
 :root {
-    --speed-size: 64px;     /* ukuran angka speed */
-    --offset-bottom: 16px;  /* jarak HUD dari bawah layar */
-    --offset-x: 0px;        /* geser HUD horizontal (+ kanan, - kiri) */
-    --scale: 0.5;           /* perbesar / perkecil HUD */
-    --plate: 0.78;          /* gelap latar cluster (0 = transparan) */
+    --logo-size: 150px;         /* ukuran logo intro */
+    --speed-size: 46px;         /* ukuran angka speed (aman di dalam lingkaran) */
+    --offset-bottom: 50px;      /* jarak HUD dari bawah layar (naikkan = HUD makin ke atas) */
+    --offset-right: 18px;       /* jarak HUD dari kanan layar */
+    --scale: 0.8;               /* ubah untuk memperbesar / memperkecil HUD */
     --red: #ff2a2f;
+    --red-deep: #c4161c;
+    --red-rgb: 255, 42, 47;     /* warna aksen (dipakai versi rgba) */
+    --warn: #ff2a2f;            /* merah peringatan, tidak ikut tema */
     --green: #22d65a;
-    --blue: #4db3ff;
+    --blue: #2f8bff;
     --yellow: #ffc21a;
+    --text: #f2f3f5;
     --muted: #8a8f99;
     --off: rgba(255, 255, 255, 0.13);
+    --panel: rgba(255, 255, 255, 0.035);
+    --line: rgba(255, 255, 255, 0.09);
+    --digital: 'Orbitron', 'Bahnschrift', 'Eurostile', 'Arial Narrow', sans-serif;
     --ui: 'Rajdhani', 'Bahnschrift', 'Segoe UI', sans-serif;
-}
-
-/* ===== TEMA (ganti lewat data-theme di #hud, atau setTheme('night')) ===== */
-.cluster[data-theme="lfa"] {
-    --face1: #ffffff; --face2: #dde3ec; --num: #14171d; --tick: #1a1d25;
-    --needle: #2f7bff; --zone1: #ff3d12; --zone2: #ff7a4a;
-    --acc1: #2f7dff; --acc2: #bfe3ff; --inner: #070a14; --glow: #4db3ff; --gearc: #4db3ff;
-}
-.cluster[data-theme="night"] {
-    --face1: #1b1e26; --face2: #0a0b0f; --num: #eef0f4; --tick: #d5d9e2;
-    --needle: #ff2a2f; --zone1: #c40f14; --zone2: #ff4a50;
-    --acc1: #ff2a2f; --acc2: #ff9a9d; --inner: #030304; --glow: #ff2a2f; --gearc: #ff4a50;
-}
-.cluster[data-theme="ice"] {
-    --face1: #171d28; --face2: #080b11; --num: #e8f6ff; --tick: #bfe3ff;
-    --needle: #3ee6ff; --zone1: #ff3d12; --zone2: #ff7a4a;
-    --acc1: #1aa8ff; --acc2: #aaf4ff; --inner: #03060b; --glow: #3ee6ff; --gearc: #3ee6ff;
-}
-.cluster[data-theme="gold"] {
-    --face1: #201b12; --face2: #0b0905; --num: #fff2d6; --tick: #e8d3a0;
-    --needle: #ffb020; --zone1: #d11a14; --zone2: #ff5a3a;
-    --acc1: #ff9d00; --acc2: #ffe08a; --inner: #050402; --glow: #ffb020; --gearc: #ffb020;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-    width: 100vw; height: 100vh;
+    width: 100vw;
+    height: 100vh;
     background: transparent;
     overflow: hidden;
     font-family: var(--ui);
-    color: #f2f3f5;
+    color: var(--text);
     user-select: none;
 }
 
+/* Posisi HUD: kanan bawah layar */
 .hud-wrap {
     position: fixed;
-    left: 50%;
-    margin-left: var(--offset-x);
+    right: var(--offset-right);
     bottom: var(--offset-bottom);
-    width: 800px; height: 520px;
-    transform: translateX(-50%) scale(var(--scale));
-    transform-origin: bottom center;
+    width: 500px;
+    height: 340px;
+    transform: scale(var(--scale));
+    transform-origin: bottom right;
 }
 
-body.preview { background: radial-gradient(ellipse at 50% 120%, #1a1d24 0%, #000 70%); }
+/* Mode preview di browser (demo) */
+body.preview {
+    background:
+        radial-gradient(ellipse at 50% 120%, #2a2f38 0%, transparent 60%),
+        linear-gradient(180deg, #4b5563 0%, #1f242c 55%, #0d0f13 100%);
+}
 body.preview .hud-wrap {
-    bottom: 50%; margin-left: 0;
-    transform: translate(-50%, 50%) scale(var(--scale));
+    right: 50%;
+    bottom: 50%;
+    transform: translate(50%, 50%) scale(min(1, calc(100vw / 540px)));
     transform-origin: center;
 }
 
-.cluster { position: relative; width: 800px; height: 520px; }
-.dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* ===================== CLUSTER ===================== */
+.cluster {
+    position: relative;
+    width: 500px;
+    height: 340px;
+}
 
-/* ===== SVG ===== */
-.dial .plate { fill: rgba(4, 5, 8, var(--plate)); stroke: rgba(255, 255, 255, 0.07); stroke-width: 1.5; }
-.dial .bezel { fill: url(#bz); stroke: rgba(255, 255, 255, 0.28); stroke-width: 1.5; }
-.dial .face { fill: url(#fc); }
-.dial .tk { stroke: var(--tick); }
-.dial .tk.rl { stroke: var(--zone1); }
-.dial .num { font-family: var(--ui); font-weight: 500; font-size: 31px; fill: var(--num); }
-.dial .zone { fill: url(#zn); }
-.dial .inner { fill: var(--inner); }
-.dial .glow { fill: none; stroke: var(--glow); stroke-width: 4; stroke-linecap: round; opacity: 0.9; filter: drop-shadow(0 0 6px var(--glow)); }
-.dial .needle polygon { fill: var(--needle); filter: drop-shadow(0 0 4px var(--needle)); }
-.cluster.redline .dial .needle polygon { filter: drop-shadow(0 0 8px var(--needle)); }
+.dial { color: var(--red); position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 
-.dial .track { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 8; stroke-linecap: butt; }
-.dial .lit { fill: none; stroke: url(#ac); stroke-width: 8; filter: drop-shadow(0 0 4px var(--glow)); }
-.dial .stk { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.4; }
-.dial .sl { font-family: var(--ui); font-weight: 600; font-size: 13px; fill: #cfd6e4; }
-.dial .ico { color: #dfe1e6; }
-.dial .big { font-family: var(--ui); font-weight: 600; font-size: 26px; fill: #fff; }
-.dial .big.it { font-style: italic; }
-.dial .small { font-family: var(--ui); font-weight: 600; font-size: 11px; fill: var(--muted); letter-spacing: 1px; }
-.dial .val { font-family: var(--ui); font-weight: 600; font-size: 13px; fill: #cfd6e4; }
+.dial .tk { stroke: rgba(255, 255, 255, 0.2); }
+.dial .tk.on { stroke: #ffffff; }
+.dial .tk.rl { stroke: rgba(var(--red-rgb), 0.45); }
+.dial .tk.rl.on { stroke: var(--red); }
 
-/* ===== PERINGATAN (statis, tanpa kedip) ===== */
-.cluster.fuel-low #fuel-arc { stroke: var(--red); filter: drop-shadow(0 0 4px var(--red)); }
-.cluster.fuel-low #fuel-ico { color: var(--red); }
-.cluster.oil-low #oil-arc { stroke: var(--yellow); }
-.cluster.oil-low #oil-ico, .cluster.oil-low #oil-val { color: var(--yellow); fill: var(--yellow); }
-.cluster.eng-warn #eng-arc { stroke: var(--yellow); }
-.cluster.eng-warn #eng-ico, .cluster.eng-warn #eng-val { color: var(--yellow); fill: var(--yellow); }
-.cluster.eng-crit #eng-arc { stroke: var(--red); }
-.cluster.eng-crit #eng-ico, .cluster.eng-crit #eng-val { color: var(--red); fill: var(--red); }
+.dial .num {
+    font-family: var(--digital);
+    font-weight: 800;
+    font-size: 24px;
+    fill: #e9eaee;
+    font-style: italic;
+}
+.dial .num.on { fill: #ffffff; }
+.dial .num.rl { fill: #ff6b6f; }
 
-/* ===== IKON INDIKATOR ===== */
-.icon-item { position: absolute; width: 28px; height: 28px; color: var(--off); }
+.dial .arc-lbl { font-family: var(--ui); font-weight: 700; font-size: 15px; fill: var(--muted); }
+.dial .arc-lbl.warn { fill: var(--red); }
+.dial .scale-lbl { font-family: var(--ui); font-weight: 600; font-size: 11px; letter-spacing: 2px; fill: #5b606a; }
+
+
+/* Jarum: ditransform langsung lewat atribut oleh JS (tanpa transition, sudah di-smooth per frame) */
+.cluster.redline .dial #redline-arc,
+.cluster.redline .dial #redline-glow,
+.cluster.redline .dial .tk.rl.on { animation: blink 0.16s steps(2) infinite; }
+
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* ===================== IKON INDIKATOR ===================== */
+.icon-item {
+    width: 24px;
+    height: 24px;
+    color: var(--off);
+    transition: color 0.15s ease, filter 0.15s ease;
+}
 .icon-item svg { width: 100%; height: 100%; display: block; }
+
 .icon-item.active    { color: var(--green); filter: drop-shadow(0 0 5px rgba(34, 214, 90, 0.6)); }
-.icon-item.high-beam { color: var(--blue);  filter: drop-shadow(0 0 6px rgba(77, 179, 255, 0.8)); }
-.icon-item.warn      { color: var(--red);   filter: drop-shadow(0 0 5px rgba(255, 42, 47, 0.6)); }
+.icon-item.high-beam { color: var(--blue);  filter: drop-shadow(0 0 6px rgba(47, 139, 255, 0.75)); }
+.icon-item.warn      { color: var(--warn);   filter: drop-shadow(0 0 5px rgba(255, 42, 47, 0.6)); }
+.icon-item.locked    { color: var(--yellow); filter: drop-shadow(0 0 5px rgba(255, 194, 26, 0.6)); }
+
+/* Satu ikon lampu: garis miring (low) atau lurus (high) */
 #headlight .beam-high { display: none; }
 #headlight.high-beam .beam-high { display: inline; }
 #headlight.high-beam .beam-low { display: none; }
 
-/* ===== PANEL TENGAH ===== */
+/* Gembok: tertutup saat terkunci, terbuka saat tidak */
+#door-lock .shackle-closed { display: none; }
+#door-lock.locked .shackle-closed { display: inline; }
+#door-lock.locked .shackle-open { display: none; }
+
+/* ===================== READOUT TENGAH ===================== */
 .center {
     position: absolute;
-    left: 290px; top: 172px;
-    width: 220px; height: 180px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    left: 250px;
+    top: 196px;
+    width: 190px;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
-.speed { font-family: var(--ui); font-weight: 600; font-size: var(--speed-size); line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; color: #fff; }
-.speed .bright { color: #fff; }
+
+.unit {
+    font-family: var(--ui);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    line-height: 1;
+}
+.unit.sub { font-size: 11px; letter-spacing: 3px; margin-top: 3px; }
+
+.speed {
+    font-family: var(--digital);
+    font-weight: 900;
+    font-style: italic;
+    font-size: var(--speed-size);   /* ubah angka ini untuk memperbesar / memperkecil angka speed */
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: nowrap;
+    margin: 6px 0 8px;
+    transform: skewX(-6deg);
+    font-variant-numeric: tabular-nums;
+}
+.speed .bright { color: #fff; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.35); }
 .dim { color: rgba(255, 255, 255, 0.1); }
-.unit { font-weight: 600; font-size: 16px; letter-spacing: 2px; color: #aeb5c2; line-height: 1; margin-top: 2px; }
-.hline { display: block; width: 130px; height: 2px; background: #cfd6e4; margin: 7px 0 4px; }
-.gear-val { font-weight: 700; font-size: 58px; line-height: 1; color: #fff; min-width: 30px; text-align: center; }
-.c-lbl { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--muted); line-height: 1; }
-.odo { display: flex; align-items: baseline; gap: 6px; margin-top: 9px; }
-.odo-val { font-weight: 600; font-size: 19px; line-height: 1; color: var(--gearc); font-variant-numeric: tabular-nums; }
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 150px;
+    padding: 8px 4px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.gear-val {
+    min-width: 22px;
+    text-align: center;
+    font-family: var(--digital);
+    font-weight: 900;
+    font-style: italic;
+    font-size: 22px;
+    line-height: 24px;
+    color: #fff;
+    transform: skewX(-6deg);
+}
+.odo-line {
+    margin-top: 7px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--digital);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1;
+    color: #e3e5e9;
+    font-variant-numeric: tabular-nums;
+}
+.c-lbl { font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--muted); }
+.odo-line small { font-family: var(--ui); font-size: 11px; color: var(--muted); }
+
+.shift {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: var(--digital);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: var(--red);
+    opacity: 0;
+}
+.cluster.redline .shift { opacity: 1; animation: blink 0.16s steps(2) infinite; }
+
+/* ===================== NILAI ARC / FOOTER ===================== */
+.arc-val {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    font-family: var(--digital);
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1;
+    color: #fff;
+}
+.arc-val svg { width: 14px; height: 14px; align-self: center; color: #c9ccd2; margin-right: 2px; }
+.arc-val small { font-family: var(--ui); font-size: 11px; color: var(--muted); }
+.gauge-row { display: flex; gap: 16px; margin-top: 8px; }
+.cluster.fuel-low .arc-val.fuel span { color: var(--yellow); }
+.cluster.oil-warn .arc-val.oil span { color: var(--yellow); }
+.cluster.oil-crit .arc-val.oil span { color: var(--warn); }
+
+/* Boot: semua ikon menyala sebentar seperti mobil asli saat kunci kontak ON */
+.cluster.booting .icon-item { color: rgba(255, 255, 255, 0.55); }
+
+/* ===================== INTRO ANNIS (slam) ===================== */
+.intro {
+    position: absolute;
+    left: 162px;
+    top: 117px;
+    width: 176px;
+    height: 176px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    opacity: 0;
+    pointer-events: none;
+}
+.intro-text {
+    display: flex;
+    gap: 4px;
+    font-family: var(--digital);
+    font-weight: 900;
+    font-style: italic;
+    font-size: 28px;
+    line-height: 1;
+    color: #fff;
+    transform: skewX(-6deg);
+}
+.intro-text span { opacity: 0; display: inline-block; }
+.intro-line {
+    display: block;
+    height: 2px;
+    width: 0;
+    background: var(--red);
+    box-shadow: 0 0 8px rgba(var(--red-rgb), 0.8);
+}
+
+.cluster.intro-on .intro { animation: introFade 2.7s ease both; }
+.cluster.intro-on .intro-text span { animation: slamIn 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) forwards; }
+.cluster.intro-on .intro-text span:nth-child(1) { animation-delay: 0.30s; }
+.cluster.intro-on .intro-text span:nth-child(2) { animation-delay: 0.39s; }
+.cluster.intro-on .intro-text span:nth-child(3) { animation-delay: 0.48s; }
+.cluster.intro-on .intro-text span:nth-child(4) { animation-delay: 0.57s; }
+.cluster.intro-on .intro-text span:nth-child(5) { animation-delay: 0.66s; }
+.cluster.intro-on .intro-line { animation: lineGrow 0.6s 1.0s ease-out forwards; }
+.cluster.intro-on .center     { animation: centerIn 2.7s ease both; }
+
+@keyframes introFade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes lineGrow  { to { width: 110px; } }
+@keyframes centerIn  { 0%, 82% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes slamIn {
+    0%   { opacity: 0; transform: translateX(-70px) skewX(-25deg); filter: blur(6px); }
+    70%  { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; text-shadow: 0 0 14px rgba(255, 255, 255, 0.5); }
+}
+
+/* ----- Logo kustom (logo.png) ----- */
+.intro-logo {
+    display: none;
+    width: var(--logo-size);
+    height: var(--logo-size);
+    object-fit: contain;
+    filter: invert(1) contrast(1.6);   /* logo hitam -> putih, sisa latar jadi hitam pekat */
+    mix-blend-mode: screen;       /* latar putih/hitam hilang di atas HUD gelap */
+    opacity: 0;
+}
+.intro.has-logo { opacity: 1; animation: none !important; }   /* fade diatur oleh logonya sendiri */
+.intro.has-logo .intro-logo { display: block; }
+.intro.has-logo .intro-emblem,
+.intro.has-logo .intro-text,
+.intro.has-logo .intro-line { display: none; }
+.cluster.intro-on .intro.has-logo .intro-logo { animation: logoIn 2.7s ease-out both; }
+@keyframes logoIn {
+    0%   { opacity: 0; transform: scale(0.82); filter: invert(1) contrast(1.6) blur(6px); }
+    30%  { opacity: 1; transform: scale(1);    filter: invert(1) contrast(1.6) blur(0); }
+    80%  { opacity: 1; transform: scale(1);    filter: invert(1) contrast(1.6) blur(0); }
+    100% { opacity: 0; transform: scale(1.04); filter: invert(1) contrast(1.6) blur(0); }
+}
+
+
+
+/* Saat redline, tulisan SHIFT menggantikan label MPH */
+.cluster.redline .center .unit:first-child { opacity: 0; }
+
+
+/* ===================== TEMA (klik tombol / tekan T) ===================== */
+body[data-theme="blue"]   { --red: #2f8bff; --red-deep: #1560c4; --red-rgb: 47, 139, 255; }
+body[data-theme="orange"] { --red: #ff8a1f; --red-deep: #c4620c; --red-rgb: 255, 138, 31; }
+body[data-theme="green"]  { --red: #22d65a; --red-deep: #139a3d; --red-rgb: 34, 214, 90; }
+body[data-theme="white"]  { --red: #e8f1ff; --red-deep: #9db4d6; --red-rgb: 232, 241, 255; }
+
+.theme-btn {
+    position: fixed; top: 14px; right: 14px; z-index: 10;
+    display: none; align-items: center; gap: 9px;
+    padding: 9px 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(10, 11, 13, 0.72); color: #fff;
+    font: 700 13px/1 var(--ui); letter-spacing: 2px; text-transform: uppercase;
+    transition: border-color 0.2s, transform 0.1s;
+}
+.theme-btn i { width: 12px; height: 12px; border-radius: 50%; background: var(--red); box-shadow: 0 0 9px var(--red); }
+.theme-btn:hover { border-color: var(--red); }
+.theme-btn:active { transform: scale(0.95); }
+body.preview .theme-btn, body.show-btn .theme-btn { display: flex; }
+
+/* ===================== ANIMASI ALA LEXUS LFA ===================== */
+/* Kontak ON: ring tachometer meluncur masuk dari kanan, jarum menyapu 0 -> max -> 0 */
+.cluster.intro-on .dial { animation: ringSlide 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes ringSlide {
+    0%   { opacity: 0; transform: translateX(170px) scale(0.9); }
+    55%  { opacity: 1; }
+    100% { opacity: 1; transform: none; }
+}
+/* Ganti tema: ring bergeser ke kiri, lalu kembali dari kanan (seperti pergantian mode LFA) */
+.cluster.swap .dial { animation: ringSwap 0.95s cubic-bezier(0.5, 0, 0.2, 1); }
+@keyframes ringSwap {
+    0%   { opacity: 1; transform: none; }
+    42%  { opacity: 0.15; transform: translateX(-110px) scale(0.93); }
+    58%  { opacity: 0.15; transform: translateX(110px) scale(0.93); }
+    100% { opacity: 1; transform: none; }
+}
+.cluster.swap .center { animation: centerPulse 0.95s ease; }
+@keyframes centerPulse { 0%, 100% { opacity: 1; } 45%, 60% { opacity: 0.25; } }
