@@ -190,7 +190,7 @@ function padDigits(n, len) {
 
 // ---------- Loop animasi ----------
 // Hemat FPS: loop BERHENTI saat tidak ada yang bergerak (jarum diam), dan dibatasi MAX_FPS.
-const MAX_FPS = 40;
+const MAX_FPS = 60;
 const FRAME_MS = 1000 / MAX_FPS;
 let lastFrame = 0, rafId = 0;
 function kick() {                         // bangunkan loop kalau sedang berhenti
@@ -479,12 +479,7 @@ window.setTheme = function (name, animate) {
     document.body.dataset.theme = THEMES[themeIdx][0];
     setText($('theme-name'), THEMES[themeIdx][1]);
     try { localStorage.setItem('hudTheme', THEMES[themeIdx][0]); } catch (e) {}
-    if (animate === false) return;
-    elHud.classList.remove('swap'); void elHud.offsetWidth; elHud.classList.add('swap');
-    bootUntil = performance.now() + 1700;      // jarum menyapu lagi
-    kick();
-    clearTimeout(swapTimer);
-    swapTimer = setTimeout(() => elHud.classList.remove('swap'), 1000);
+    // perpindahan warna dihaluskan lewat CSS (transition pada variabel warna)
 };
 window.nextTheme = () => window.setTheme(themeIdx + 1);
 $('theme-btn').addEventListener('click', window.nextTheme);
@@ -501,8 +496,13 @@ window.addEventListener('message', (e) => {
     try { saved = saved || localStorage.getItem('hudTheme'); } catch (e) {}
     window.setTheme(saved || 'lfa', false);
     setSegs('wtr', 0.55); setSegs('otp', 0.5);
-    const tick = () => { const d = new Date(); setText($('clock'), d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')); };
-    tick(); setInterval(tick, 15000);
+    let lastClock = '';
+    const tick = () => {
+        const d = new Date(), h = d.getHours();
+        const html = ((h % 12) || 12) + ':' + String(d.getMinutes()).padStart(2, '0') + '<small>' + (h < 12 ? 'AM' : 'PM') + '</small>';
+        if (html !== lastClock) { lastClock = html; $('clock').innerHTML = html; }
+    };
+    tick(); setInterval(tick, 5000);
     window.setTemp = (c) => setText($('temp-val'), Math.round(Number(c) || 0));
 })();
 

@@ -334,16 +334,6 @@ body[data-theme="mono"]  { --face-a: #16261c; --face-b: #08100b; --ink: #dfffe9;
     55%  { opacity: 1; }
     100% { opacity: 1; transform: none; }
 }
-/* Ganti tema: ring bergeser ke kiri, lalu kembali dari kanan (seperti pergantian mode LFA) */
-.cluster.swap .dial { animation: ringSwap 0.95s cubic-bezier(0.5, 0, 0.2, 1); }
-@keyframes ringSwap {
-    0%   { opacity: 1; transform: none; }
-    42%  { opacity: 0.15; transform: translateX(-110px) scale(0.93); }
-    58%  { opacity: 0.15; transform: translateX(110px) scale(0.93); }
-    100% { opacity: 1; transform: none; }
-}
-.cluster.swap .center { animation: centerPulse 0.95s ease; }
-@keyframes centerPulse { 0%, 100% { opacity: 1; } 45%, 60% { opacity: 0.25; } }
 
 
 /* ===================== DESAIN LFA ===================== */
@@ -352,7 +342,6 @@ body[data-theme="mono"]  { --face-a: #16261c; --face-b: #08100b; --ink: #dfffe9;
 .dial .scale-lbl { fill: var(--ink); opacity: 0.6; font-size: 10px; letter-spacing: 1px; }
 .dial .zone { fill: var(--zone); }
 .dial .ndl { stroke: var(--needle); }
-.dial #needle { filter: drop-shadow(0 0 4px var(--needle)); }
 .dial .seg { fill: rgba(255, 255, 255, 0.1); }
 .dial .seg.on { fill: var(--seg); }
 .cluster.fuel-low .seg.fuel.on { fill: var(--yellow); }
@@ -378,3 +367,15 @@ body[data-theme="mono"]  { --face-a: #16261c; --face-b: #08100b; --ink: #dfffe9;
 .side-txt small { font-size: 10px; color: var(--muted); }
 .side-txt.temp { left: 4px; }
 .side-txt.clk { right: 2px; }
+
+/* ===================== FADE WARNA TEMA ===================== */
+@property --face-a { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --face-b { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --zone { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --needle { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --glow { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --seg { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+body { transition: --face-a 0.7s ease, --face-b 0.7s ease, --ink 0.7s ease, --zone 0.7s ease, --needle 0.7s ease, --glow 0.7s ease, --seg 0.7s ease; }
+.side-txt.clk { top: 189px; text-align: right; line-height: 1.15; font-size: 13px; }
+.side-txt.clk small { display: block; font-size: 9px; letter-spacing: 1px; color: var(--muted); }
