@@ -9,8 +9,8 @@
    ========================================================= */
 
 const MPS_TO_MPH = 2.236936;
-const MAX_RPM = 8;          // skala tachometer (x1000)
-const REDLINE = 7;          // mulai zona merah (x1000)
+const MAX_RPM = 10;         // skala tachometer (x1000)
+const REDLINE = 9;         // mulai zona merah (x1000)
 
 const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang sudah dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
@@ -26,22 +26,16 @@ function isTrueValue(val) {
 }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// ---------- Geometri dial ----------
-const CX = 250, CY = 205;
-const START = 150, SWEEP = 240;                      // derajat (0 = kanan, searah jarum jam)
-const R_IN = 96, R_FILL = 172, R_TICK = 190;
-const R_BACK = 202;        // radius latar speedometer (pas di luar garis tick, R_TICK + 12)
-const BACK_BOTTOM = 306;   // sisi bawah latar dipotong rata tepat di bawah ujung tick (tidak melebihi dial)
+// ---------- Geometri dial (gaya Lexus LFA: ring putih, hub gelap, jarum biru) ----------
+const CX = 280, CY = 205;
+const START = 90, SWEEP = 240;                 // 0 di bawah, searah jarum jam, celah di kanan bawah
+const R_HUB = 100, R_FACE = 188, R_TICK = 184, R_NUM = 144;
+const R_IN = R_HUB, R_FILL = R_FACE;
 const rpmAngle = (ratio) => START + clamp01(ratio) * SWEEP;
-
-const pol = (r, a) => {
-    const t = (a * Math.PI) / 180;
-    return [(CX + r * Math.cos(t)).toFixed(2), (CY + r * Math.sin(t)).toFixed(2)];
-};
+const pol = (r, a) => { const t = (a * Math.PI) / 180; return [(CX + r * Math.cos(t)).toFixed(2), (CY + r * Math.sin(t)).toFixed(2)]; };
 function sector(r1, r2, a1, a2) {
     if (a2 - a1 < 0.05) return '';
-    const [x1, y1] = pol(r2, a1), [x2, y2] = pol(r2, a2);
-    const [x3, y3] = pol(r1, a2), [x4, y4] = pol(r1, a1);
+    const [x1, y1] = pol(r2, a1), [x2, y2] = pol(r2, a2), [x3, y3] = pol(r1, a2), [x4, y4] = pol(r1, a1);
     const large = a2 - a1 > 180 ? 1 : 0;
     return `M${x1} ${y1}A${r2} ${r2} 0 ${large} 1 ${x2} ${y2}L${x3} ${y3}A${r1} ${r1} 0 ${large} 0 ${x4} ${y4}Z`;
 }
@@ -50,114 +44,73 @@ function arcPath(r, a1, a2) {
     return `M${x1} ${y1}A${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2} ${y2}`;
 }
 
-// Arc samping (segmen): kiri = FUEL (E bawah -> F atas), kanan = OIL PRESS (L bawah -> H atas)
-const SIDE_R1 = 205, SIDE_R2 = 216, SIDE_SEGS = 16;
-const FUEL_A = [157, 203];      // bawah -> atas (naik sudutnya)
-const OIL_A = [23, -23];        // bawah -> atas (turun sudutnya)
-
+// Gauge samping (segmen): kiri atas = suhu air, kiri bawah = FUEL, kanan atas = suhu oli, kanan bawah = OIL PRESS
+const SIDE_R1 = 218, SIDE_R2 = 229, SIDE_SEGS = 14;
+const SIDE = { fuel: [136, 172], wtr: [188, 224], oil: [44, 8], otp: [-8, -44] };   // bawah -> atas
 function buildSideArc(cls, [aFrom, aTo]) {
-    const step = (aTo - aFrom) / SIDE_SEGS;
-    const gap = 0.7 * Math.sign(step);
+    const step = (aTo - aFrom) / SIDE_SEGS, gap = 0.9 * Math.sign(step);
     let s = '';
     for (let i = 0; i < SIDE_SEGS; i++) {
         let a1 = aFrom + i * step + gap / 2, a2 = aFrom + (i + 1) * step - gap / 2;
         if (a1 > a2) [a1, a2] = [a2, a1];
-        s += `<path class="seg ${cls}" data-i="${i}" d="${sector(SIDE_R1, SIDE_R2, a1, a2)}"/>`;
+        s += `<path class="seg ${cls}" d="${sector(SIDE_R1, SIDE_R2, a1, a2)}"/>`;
     }
-    // garis skala tipis di dalam arc
-    const lo = Math.min(aFrom, aTo), hi = Math.max(aFrom, aTo);
-    s += `<path d="${arcPath(198, lo, hi)}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
-    [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
-        const a = aFrom + (aTo - aFrom) * t;
-        const [x1, y1] = pol(198, a), [x2, y2] = pol(t % 0.5 === 0 ? 191 : 194, a);
-        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>`;
+    [0, 0.5, 1].forEach((t) => {
+        const a = aFrom + (aTo - aFrom) * t, [x1, y1] = pol(SIDE_R2 + 4, a), [x2, y2] = pol(SIDE_R2 + 9, a);
+        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>`;
     });
     return s;
 }
 
 function buildDial() {
+    const a9 = rpmAngle(REDLINE / MAX_RPM), a10 = rpmAngle(1);
     let s = `
     <defs>
-      <radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY - 15}" r="${R_BACK}">
-        <stop offset="0" stop-color="#101216" stop-opacity="0.88"/>
-        <stop offset="0.8" stop-color="#0a0b0e" stop-opacity="0.9"/>
-        <stop offset="1" stop-color="#050506" stop-opacity="0.95"/>
+      <radialGradient id="face" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY}" r="${R_FACE}">
+        <stop offset="0.5" style="stop-color:var(--face-a)"/><stop offset="1" style="stop-color:var(--face-b)"/>
       </radialGradient>
-      <radialGradient id="fillGrad" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY}" r="${R_FILL}">
-        <stop offset="0.55" stop-color="currentColor" stop-opacity="0"/>
-        <stop offset="0.72" stop-color="currentColor" stop-opacity="0.28"/>
-        <stop offset="0.93" stop-color="currentColor" stop-opacity="0.72"/>
-        <stop offset="1" stop-color="currentColor" stop-opacity="0.95"/>
+      <radialGradient id="hub" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY}" r="${R_HUB}">
+        <stop offset="0" stop-color="#0d1426"/><stop offset="0.82" stop-color="#04060d"/><stop offset="1" stop-color="#0b1c44"/>
       </radialGradient>
-      <radialGradient id="hub" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY - 20}" r="${R_IN}">
-        <stop offset="0" stop-color="#16181d"/>
-        <stop offset="1" stop-color="#060607"/>
-      </radialGradient>
-      <clipPath id="rpmClip"><path id="rpm-clip-path" d=""/></clipPath>
     </defs>
-
-    <!-- latar: lingkaran dial yang dipotong rata di bawah -->
-    <path d="M ${CX - Math.sqrt(R_BACK * R_BACK - (BACK_BOTTOM - CY) ** 2)} ${BACK_BOTTOM} A ${R_BACK} ${R_BACK} 0 1 1 ${CX + Math.sqrt(R_BACK * R_BACK - (BACK_BOTTOM - CY) ** 2)} ${BACK_BOTTOM} Z" fill="url(#bg)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5" stroke-linejoin="round"/>
-
-    <!-- dasar dial -->
-    <path d="${sector(R_IN, R_TICK + 2, START, START + SWEEP)}" fill="rgba(255,255,255,0.025)"/>
-    <path d="${arcPath(R_TICK + 4, START - 2, START + SWEEP + 2)}" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
-    <path d="${arcPath(R_TICK + 9, START + 6, START + SWEEP - 6)}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
-
-    <!-- isian merah mengikuti RPM -->
-    <g clip-path="url(#rpmClip)">
-      <path d="${sector(R_IN, R_FILL, START, START + SWEEP)}" fill="url(#fillGrad)"/>
-      <g stroke="currentColor" stroke-opacity="0.38" stroke-width="1">`;
-    for (let a = START; a <= START + SWEEP; a += 1.6) {
-        const [x1, y1] = pol(R_IN + 34, a), [x2, y2] = pol(R_FILL, a);
-        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    <circle cx="${CX}" cy="${CY}" r="210" fill="#0c0d0f" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
+    <circle cx="${CX}" cy="${CY}" r="196" fill="none" stroke="#2b2d32" stroke-width="16"/>`;
+    for (let a = 0; a < 360; a += 15) {                         // garis kecil di bezel
+        const [x1, y1] = pol(199, a), [x2, y2] = pol(a % 45 ? 203 : 206, a);
+        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,255,255,${a % 45 ? 0.4 : 0.85})" stroke-width="1.6"/>`;
     }
-    s += `</g>
-    </g>
-    <path id="trail-1" fill="currentColor" fill-opacity="0.16" d=""/>
-    <path id="trail-2" fill="currentColor" fill-opacity="0.18" d=""/>
-    <path id="trail-3" fill="currentColor" fill-opacity="0.22" d=""/>`;
-
-    // tick halus per 100 RPM
-    s += '<g stroke-linecap="butt">';
+    s += `<circle cx="${CX}" cy="${CY}" r="${R_FACE}" fill="url(#face)"/>
+    <path id="redline-arc" class="zone" d="${sector(R_HUB, R_FACE, a9, a10)}"/>
+    <g stroke-linecap="butt">`;
     for (let i = 0; i <= MAX_RPM * 10; i++) {
-        const a = rpmAngle(i / (MAX_RPM * 10));
-        const major = i % 10 === 0, half = i % 5 === 0;
-        const [x1, y1] = pol(major ? 164 : half ? 174 : 179, a), [x2, y2] = pol(R_TICK, a);
-        const rl = i >= REDLINE * 10 ? ' rl' : '';
-        s += `<line class="tk${rl}" data-i="${i}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${major ? 3.2 : half ? 2.2 : 1.4}"/>`;
+        const a = rpmAngle(i / (MAX_RPM * 10)), major = i % 10 === 0, half = i % 5 === 0;
+        const [x1, y1] = pol(major ? 164 : half ? 172 : 178, a), [x2, y2] = pol(R_TICK, a);
+        s += `<line class="tk" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${major ? 2.8 : half ? 1.8 : 0.9}"/>`;
     }
     s += '</g>';
-
-    // zona merah 7-8
-    const redArc = arcPath(160, rpmAngle(REDLINE / MAX_RPM), rpmAngle(1));
-    s += `<path id="redline-glow" d="${redArc}" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="10"/>
-          <path id="redline-arc" d="${redArc}" fill="none" stroke="currentColor" stroke-width="4"/>`;
-
-    // angka 0-8
     for (let v = 0; v <= MAX_RPM; v++) {
-        const [x, y] = pol(140, rpmAngle(v / MAX_RPM));
-        s += `<text class="num${v >= REDLINE ? ' rl' : ''}" data-v="${v}" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">${v}</text>`;
+        const [x, y] = pol(R_NUM, rpmAngle(v / MAX_RPM));
+        s += `<text class="num" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">${v}</text>`;
     }
-    const [lx, ly] = pol(118, 270);
-    s += `<text class="scale-lbl" x="${lx}" y="${Number(ly) + 6}" text-anchor="middle">x1000 r/min</text>`;
-
-    // hub tengah
-    s += `<circle cx="${CX}" cy="${CY}" r="${R_IN}" fill="url(#hub)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
-          <circle cx="${CX}" cy="${CY}" r="${R_IN - 8}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
-
-    // jarum digital (garis merah + palang kecil)
-    s += `<g id="needle" transform="rotate(${START} ${CX} ${CY})">
-            <line x1="${CX + R_IN + 2}" y1="${CY}" x2="${CX + R_TICK + 4}" y2="${CY}" stroke="currentColor" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
-            <line x1="${CX + R_IN + 2}" y1="${CY}" x2="${CX + R_TICK + 4}" y2="${CY}" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
-            <line x1="${CX + R_FILL - 2}" y1="${CY - 7}" x2="${CX + R_FILL - 2}" y2="${CY + 7}" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-            <line x1="${CX + R_IN + 30}" y1="${CY}" x2="${CX + R_TICK + 2}" y2="${CY}" stroke="#ffffff" stroke-width="1.2"/>
-          </g>`;
-
-
+    s += `<text class="scale-lbl" x="${CX + 40}" y="${CY + 150}">&#215;1000 r/min</text>
+    <circle cx="${CX}" cy="${CY}" r="${R_HUB + 4}" fill="none" style="stroke:var(--glow)" stroke-opacity="0.2" stroke-width="7"/>
+    <circle cx="${CX}" cy="${CY}" r="${R_HUB}" fill="url(#hub)" style="stroke:var(--glow)" stroke-width="2.5"/>
+    <g id="needle" transform="rotate(${START} ${CX} ${CY})">
+      <line class="ndl" x1="${CX + 34}" y1="${CY}" x2="${CX + 170}" y2="${CY}" stroke-opacity="0.28" stroke-width="8" stroke-linecap="round"/>
+      <line class="ndl" x1="${CX + 34}" y1="${CY}" x2="${CX + 170}" y2="${CY}" stroke-width="3" stroke-linecap="round"/>
+    </g>`;
+    for (const k in SIDE) s += buildSideArc(k, SIDE[k]);
     svg.innerHTML = s;
 }
 buildDial();
+const segEls = {}, segCache = {};
+Object.keys(SIDE).forEach((k) => { segEls[k] = svg.querySelectorAll('.seg.' + k); });
+function setSegs(cls, ratio) {
+    const n = Math.round(clamp01(ratio) * SIDE_SEGS);
+    if (segCache[cls] === n) return;
+    segCache[cls] = n;
+    segEls[cls].forEach((el, i) => el.classList.toggle('on', i < n));
+}
 
 // ---------- Teks intro: ganti di index.html pada  data-text="ANNIS"  (huruf & ukuran diatur otomatis) ----------
 (function () {
@@ -214,8 +167,8 @@ function renderRpm(ratio) {
     const lit = Math.round(ratio * MAX_RPM * 10);
     if (lit !== state.lastTick) {
         state.lastTick = lit;
-        ticks.forEach((t, i) => t.classList.toggle('on', i <= lit && ratio > 0.003));
-        nums.forEach((n, v) => n.classList.toggle('on', v * 10 <= lit));
+        
+        
     }
     const red = ratio >= REDLINE / MAX_RPM;
     if (red !== lastRedline) {
@@ -271,6 +224,7 @@ function frame(now) {
     state.healthShown += (hp - state.healthShown) * Math.min(1, dt * 6);
     if (Math.abs(hp - state.healthShown) < 0.0005) state.healthShown = hp;
     setText($('oil-val'), Math.round(state.healthShown * 100));
+    setSegs('oil', state.healthShown);
 
     // lanjut hanya kalau masih ada yang bergerak
     if (now < bootUntil || state.rpmShown !== target || state.healthShown !== hp) rafId = requestAnimationFrame(frame);
@@ -303,6 +257,7 @@ window.setFuel = function (fuel) {
     state.fuel = percent;
     setText($('fuel-val'), Math.round(percent * 100));
     elHud.classList.toggle('fuel-low', percent < 0.20);
+    setSegs('fuel', percent);
 };
 
 // ---------- 4. Engine Health -> arc OIL PRESS (nilai & arc langsung dari setHealth) ----------
@@ -515,7 +470,7 @@ window.setEngine(false);
 window.updateLockStatus(false);
 window.setOdometer(0);
 // ---------- Tema ----------
-const THEMES = [['red', 'Merah'], ['blue', 'Biru LFA'], ['orange', 'Oranye'], ['green', 'Hijau'], ['white', 'Putih']];
+const THEMES = [['lfa', 'LFA Putih'], ['night', 'Night Merah'], ['ice', 'Ice Biru'], ['amber', 'Amber'], ['mono', 'Mono Hijau']];
 let themeIdx = 0, swapTimer;
 window.setTheme = function (name, animate) {
     let i = typeof name === 'number' ? name : THEMES.findIndex((t) => t[0] === name);
@@ -544,7 +499,11 @@ window.addEventListener('message', (e) => {
     if (q.has('button')) document.body.classList.add('show-btn');
     let saved = q.get('theme');
     try { saved = saved || localStorage.getItem('hudTheme'); } catch (e) {}
-    window.setTheme(saved || 'red', false);
+    window.setTheme(saved || 'lfa', false);
+    setSegs('wtr', 0.55); setSegs('otp', 0.5);
+    const tick = () => { const d = new Date(); setText($('clock'), d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')); };
+    tick(); setInterval(tick, 15000);
+    window.setTemp = (c) => setText($('temp-val'), Math.round(Number(c) || 0));
 })();
 
 window.playIntro();   // animasi ANNIS saat HUD pertama kali dipakai
