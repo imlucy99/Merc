@@ -3,7 +3,7 @@
     --speed-size: 40px;         /* ukuran angka speed (aman di dalam lingkaran) */
     --offset-bottom: 50px;      /* jarak HUD dari bawah layar (naikkan = HUD makin ke atas) */
     --offset-right: 18px;       /* jarak HUD dari kanan layar */
-    --scale: 0.8;               /* ubah untuk memperbesar / memperkecil HUD */
+    --scale: 0.7;               /* ubah untuk memperbesar / memperkecil HUD */
     --red: #2f7bff;
     --red-deep: #c4161c;
     --red-rgb: 47, 123, 255;     /* warna aksen (dipakai versi rgba) */
